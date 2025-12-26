@@ -1,12 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
-import { User } from '../../generated/prisma/client';
-import { UsersService } from '../users/users.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { JwtPayload } from './strategies/jwt.strategy';
+import type { UserModel } from '../../generated/prisma/models.js';
+import { UsersService } from '../users/users.service.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { JwtPayload } from './strategies/jwt.strategy.js';
 
 export interface TokenPair {
   accessToken: string;
@@ -14,7 +14,7 @@ export interface TokenPair {
 }
 
 export interface AuthResponse extends TokenPair {
-  user: Omit<User, 'password'>;
+  user: Omit<UserModel, 'password'>;
 }
 
 @Injectable()
@@ -33,11 +33,11 @@ export class AuthService {
     };
   }
 
-  private buildPayload(user: User): JwtPayload {
+  private buildPayload(user: UserModel): JwtPayload {
     return { sub: user.id, email: user.email, role: user.role };
   }
 
-  private async signTokens(user: User): Promise<TokenPair> {
+  private async signTokens(user: UserModel): Promise<TokenPair> {
     const payload = this.buildPayload(user);
     const accessToken = await this.jwtService.signAsync(payload);
     const refreshOptions: JwtSignOptions = {
@@ -51,7 +51,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private sanitizeUser(user: User): Omit<User, 'password'> {
+  private sanitizeUser(user: UserModel): Omit<UserModel, 'password'> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...rest } = user;
     return rest;
@@ -98,7 +98,7 @@ export class AuthService {
     }
   }
 
-  async me(payload: JwtPayload): Promise<Omit<User, 'password'>> {
+  async me(payload: JwtPayload): Promise<Omit<UserModel, 'password'>> {
     const user = await this.usersService.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException();

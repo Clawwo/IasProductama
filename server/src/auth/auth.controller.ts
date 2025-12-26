@@ -6,13 +6,12 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { JwtPayload } from './strategies/jwt.strategy';
-import { AuthResponse } from './auth.service';
+import { AuthService, type AuthResponse } from './auth.service.js';
+import { RegisterDto } from './dto/register.dto.js';
+import { LoginDto } from './dto/login.dto.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { JwtPayload } from './strategies/jwt.strategy.js';
 
 @Controller('auth')
 export class AuthController {
