@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Checkbox } from "./components/ui/checkbox";
+import { LoginCard } from "./components/auth/LoginCard";
+import { LoginHero } from "./components/auth/LoginHero";
+import { InventoryPage } from "./components/inventory/InventoryPage";
 import { ensureSession, fetchMe, login, type User } from "./lib/auth";
 import { queryClient } from "./lib/react-query";
 
 function App() {
+  type View = "dashboard" | "inventory" | "masuk";
+
+  const [view, setView] = useState<View>(() =>
+    window.location.hash === "#inventory"
+      ? "inventory"
+      : window.location.hash === "#masuk"
+      ? "masuk"
+      : "dashboard"
+  );
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -20,6 +29,17 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
+    const onHashChange = () => {
+      if (window.location.hash === "#inventory") {
+        setView("inventory");
+      } else if (window.location.hash === "#masuk") {
+        setView("masuk");
+      } else {
+        setView("dashboard");
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+
     (async () => {
       const current = await ensureSession();
       if (mounted && current) {
@@ -27,8 +47,10 @@ function App() {
         setEmail((prev) => (prev ? prev : current.email));
       }
     })();
+
     return () => {
       mounted = false;
+      window.removeEventListener("hashchange", onHashChange);
     };
   }, []);
 
@@ -44,11 +66,10 @@ function App() {
     },
   });
 
-  const user: User | undefined = meQuery.data;
-  const loading = loginMutation.isPending || meQuery.isFetching;
-  const errorMessage = loginMutation.error
-    ? (loginMutation.error as Error).message || "Gagal masuk"
-    : undefined;
+  const loading = loginMutation.isPending;
+
+  // DEMO MODE: tampilkan halaman daftar barang tanpa login
+  return <InventoryPage />;
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-white text-slate-900">

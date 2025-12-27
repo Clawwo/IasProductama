@@ -42,6 +42,10 @@ import {
   EllipsisVertical,
   Filter,
   Layers3,
+  Drum,
+  Palette,
+  CircleDot,
+  Ruler,
   PackageSearch,
   PencilLine,
   Plus,
@@ -76,6 +80,12 @@ export function InventoryPage() {
   >("all");
   const [pendingDelete, setPendingDelete] =
     useState<InventoryItemWithKind | null>(null);
+  const [ringSubCategory, setRingSubCategory] = useState<
+    "all" | "SNARE" | "TOM"
+  >("all");
+  const [ringSize, setRingSize] = useState<string>("all");
+  const [ringColor, setRingColor] = useState<string>("all");
+  const [ringHoles, setRingHoles] = useState<string>("all");
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -94,9 +104,46 @@ export function InventoryPage() {
         selectedCategories.includes(item.category);
       const status = getStatus(item.stock);
       const matchStatus = statusFilter === "all" || status === statusFilter;
-      return matchText && matchCategory && matchStatus;
+      const isRing = item.kind === "RING";
+      const matchRingSub =
+        !isRing ||
+        ringSubCategory === "all" ||
+        item.subCategory === ringSubCategory;
+      const ringItemSize = isRing ? getRingSize(item) : null;
+      const matchRingSize =
+        !isRing ||
+        ringSize === "all" ||
+        (ringItemSize && ringItemSize === ringSize);
+      const ringItemColor = isRing ? getRingColor(item) : null;
+      const matchRingColor =
+        !isRing ||
+        ringColor === "all" ||
+        (ringItemColor && ringItemColor === ringColor);
+      const ringItemHoles = isRing ? getRingHoles(item) : null;
+      const matchRingHoles =
+        !isRing ||
+        ringHoles === "all" ||
+        (ringItemHoles && ringItemHoles === ringHoles);
+      return (
+        matchText &&
+        matchCategory &&
+        matchStatus &&
+        matchRingSub &&
+        matchRingSize &&
+        matchRingColor &&
+        matchRingHoles
+      );
     });
-  }, [items, search, selectedCategories, statusFilter]);
+  }, [
+    items,
+    search,
+    selectedCategories,
+    statusFilter,
+    ringSubCategory,
+    ringSize,
+    ringColor,
+    ringHoles,
+  ]);
 
   const totalItems = filtered.length;
   const totalStock = filtered.reduce((sum, item) => sum + item.stock, 0);
@@ -104,6 +151,39 @@ export function InventoryPage() {
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
 
   const currentPage = Math.min(page, totalPages);
+
+  const ringSizes = useMemo(() => {
+    const sizes = new Set<string>();
+    items.forEach((item) => {
+      if (item.kind === "RING") {
+        const size = getRingSize(item);
+        if (size) sizes.add(size);
+      }
+    });
+    return Array.from(sizes).sort((a, b) => Number(a) - Number(b));
+  }, [items]);
+
+  const ringColors = useMemo(() => {
+    const colors = new Set<string>();
+    items.forEach((item) => {
+      if (item.kind === "RING") {
+        const color = getRingColor(item);
+        if (color) colors.add(color);
+      }
+    });
+    return Array.from(colors).sort();
+  }, [items]);
+
+  const ringHoleCounts = useMemo(() => {
+    const holes = new Set<string>();
+    items.forEach((item) => {
+      if (item.kind === "RING") {
+        const hole = getRingHoles(item);
+        if (hole) holes.add(hole);
+      }
+    });
+    return Array.from(holes).sort((a, b) => Number(a) - Number(b));
+  }, [items]);
 
   const paged = useMemo(() => {
     const start = (currentPage - 1) * perPage;
@@ -175,8 +255,8 @@ export function InventoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
+      <div className="space-y-6">
         <header className="space-y-2">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
             Gudang
@@ -191,7 +271,7 @@ export function InventoryPage() {
                 className="bg-sky-600 text-white hover:bg-sky-700"
                 onClick={openAddForm}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="h-4 w-4" />
                 Tambah Barang
               </Button>
             </div>
@@ -328,12 +408,133 @@ export function InventoryPage() {
                 setSearch("");
                 setSelectedCategories([]);
                 setStatusFilter("all");
+                setRingSubCategory("all");
+                setRingSize("all");
+                setRingColor("all");
+                setRingHoles("all");
               }}
             >
               Reset
             </Button>
           </div>
         </div>
+
+        {selectedCategories.includes("Ring") ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Filter Ring
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={ringSubCategory === "all" ? "ghost" : "default"}
+                  className="h-9 px-3"
+                >
+                  <Drum className="mr-2 h-4 w-4" />
+                  {ringSubCategory === "all"
+                    ? "Model"
+                    : ringSubCategory === "SNARE"
+                    ? "Snare"
+                    : "Tom"}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-40">
+                <DropdownMenuLabel>Pilih Model</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setRingSubCategory("all")}>
+                  Semua
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setRingSubCategory("SNARE")}>
+                  Snare
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setRingSubCategory("TOM")}>
+                  Tom
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={ringColor === "all" ? "ghost" : "default"}
+                  className="h-9 px-3"
+                >
+                  <Palette className="mr-2 h-4 w-4" />
+                  {ringColor === "all" ? "Warna" : ringColor}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-40">
+                <DropdownMenuLabel>Pilih warna</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setRingColor("all")}>
+                  Semua
+                </DropdownMenuItem>
+                {ringColors.map((color) => (
+                  <DropdownMenuItem
+                    key={color}
+                    onSelect={() => setRingColor(color)}
+                  >
+                    {color}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={ringHoles === "all" ? "ghost" : "default"}
+                  className="h-9 px-3"
+                >
+                  <CircleDot className="mr-2 h-4 w-4" />
+                  {ringHoles === "all" ? "Lubang" : `${ringHoles} lubang`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-40">
+                <DropdownMenuLabel>Jumlah lubang</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setRingHoles("all")}>
+                  Semua
+                </DropdownMenuItem>
+                {ringHoleCounts.map((hole) => (
+                  <DropdownMenuItem
+                    key={hole}
+                    onSelect={() => setRingHoles(hole)}
+                  >
+                    {hole} lubang
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={ringSize === "all" ? "ghost" : "default"}
+                  className="h-9 px-3"
+                >
+                  <Ruler className="mr-2 h-4 w-4" />
+                  {ringSize === "all" ? "Ukuran" : `${ringSize}"`}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-36">
+                <DropdownMenuLabel>Ukuran Ring</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setRingSize("all")}>
+                  Semua
+                </DropdownMenuItem>
+                {ringSizes.map((size) => (
+                  <DropdownMenuItem
+                    key={size}
+                    onSelect={() => setRingSize(size)}
+                  >
+                    {size}"
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : null}
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="px-3 sm:px-5">
@@ -668,4 +869,29 @@ function getStatus(stock: number): "aman" | "menipis" | "kritis" {
 
 function buildDisplayCode(item: InventoryItemWithKind) {
   return item.code;
+}
+
+function getRingSize(item: InventoryItemWithKind): string | null {
+  const sizeMatch = item.name.match(/(\d{1,2}(?:[.,]\d+)?)\s*''/);
+  if (!sizeMatch) return null;
+  return sizeMatch[1].replace(",", ".");
+}
+
+function getRingColor(item: InventoryItemWithKind): string | null {
+  const label = item.name.toLowerCase();
+  if (label.includes("chrome")) return "Chrome";
+  if (
+    label.includes("hitam") ||
+    label.includes("blk") ||
+    label.includes("black")
+  )
+    return "Hitam";
+  if (label.includes("gold")) return "Gold";
+  return null;
+}
+
+function getRingHoles(item: InventoryItemWithKind): string | null {
+  const holeMatch = item.name.match(/lubang\s*(\d{1,2})/i);
+  if (!holeMatch) return null;
+  return holeMatch[1];
 }

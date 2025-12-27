@@ -46,3 +46,24 @@ model Session {
 
   @@index([userId])
 }
+
+model Inbound {
+  id        String        @id @default(uuid())
+  vendor    String
+  date      DateTime
+  note      String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  lines     InboundLine[]
+}
+
+model InboundLine {
+  id        String   @id @default(uuid())
+  inboundId String
+  inbound   Inbound  @relation(fields: [inboundId], references: [id], onDelete: Cascade)
+  code      String
+  qty       Int
+  note      String?
+
+  @@index([inboundId])
+}

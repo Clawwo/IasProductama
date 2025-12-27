@@ -26,6 +26,7 @@ export type InventoryItem = {
   name: string;
   stock: number;
   category: string;
+  subCategory?: "SNARE" | "TOM";
   kind?: InventoryKind;
 };
 
@@ -3064,6 +3065,7 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 6) Uk. 10'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKATAS10",
@@ -3088,24 +3090,28 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 6) Uk. 12'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKATAS3",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 12'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKATAS4",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 13'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKATAS5",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 14'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKATAS6",
@@ -3136,30 +3142,35 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 6) Uk. 10'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKBAWAH2",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 6) Uk. 12'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKBAWAH3",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 12'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKBAWAH4",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 13'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKBAWAH5",
     name: "Ring Drumband Hitam Tebal 1,2  (lubang 8) Uk. 14'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-BLKBAWAH6",
@@ -3184,6 +3195,7 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 4) Uk.  6'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "TOM",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS10",
@@ -3214,6 +3226,7 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Chrome Tebal 1,5  (lubang 6) Uk. 12'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS15",
@@ -3232,72 +3245,84 @@ export const inventoryItems: InventoryItem[] = [
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 4) Uk.  8'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "TOM",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS3",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 6) Uk.  10'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "TOM",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS4",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 8) Uk.  12'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "TOM",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS5",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 5) Uk. 10'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS6",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 6) Uk. 12'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS7",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 8) Uk. 13'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS8",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 8) Uk. 14'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRATAS9",
     name: "Ring Drumband Chrome Tebal 1,5  (lubang 4) Uk. 6'' Atas",
     stock: 5,
     category: "Ring",
+    subCategory: "TOM",
   },
   {
     code: "RING-GEN-01-CHRCHRBAWAH",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 5) Uk. 10'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRBAWAH2",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 6) Uk. 12'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRBAWAH3",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 8) Uk. 13'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-01-CHRCHRBAWAH4",
     name: "Ring Drumband Chrome Tebal 1,2  (lubang 8) Uk. 14'' Bawah",
     stock: 5,
     category: "Ring",
+    subCategory: "SNARE",
   },
   {
     code: "RING-GEN-04-CHRCHRATAS",
