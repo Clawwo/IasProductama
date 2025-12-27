@@ -131,12 +131,6 @@ function App() {
                     <Checkbox className="border-slate-300 data-[state=checked]:bg-sky-600 data-[state=checked]:border-sky-600" />
                     Ingat saya
                   </label>
-                  <button
-                    type="button"
-                    className="font-medium text-sky-700 hover:text-sky-800"
-                  >
-                    Lupa sandi?
-                  </button>
                 </div>
                 <Button
                   type="submit"
