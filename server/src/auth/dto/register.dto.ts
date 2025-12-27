@@ -11,6 +11,10 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
+  // Coerce numeric inputs (e.g., from form fields sent as numbers) into strings
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? String(value) : value,
+  )
   @IsString()
   @MinLength(6)
   password!: string;
@@ -19,6 +23,7 @@ export class RegisterDto {
   @IsString()
   name?: string;
 
+  @IsOptional()
   @IsEnum(Role)
-  role!: Role;
+  role?: Role;
 }

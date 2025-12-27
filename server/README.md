@@ -31,6 +31,16 @@
 $ npm install
 ```
 
+## Environment
+
+Copy `.env.example` to `.env` and fill the secrets:
+
+- `DATABASE_URL` Postgres connection string
+- `JWT_ACCESS_SECRET` (or `JWT_SECRET` fallback) secret for signing access tokens
+- `JWT_ACCESS_EXPIRES` access token lifetime (e.g., `15m`)
+- `SESSION_TTL_MS` session/refresh lifetime in ms (default 7 days)
+- `PORT` server port
+
 ## Compile and run the project
 
 ```bash

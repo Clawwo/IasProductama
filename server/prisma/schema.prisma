@@ -5,8 +5,8 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -16,6 +16,7 @@ datasource db {
 enum Role {
   ADMIN
   PETUGAS
+  SUPERADMIN
 }
 
 model User {
@@ -23,8 +24,25 @@ model User {
   email     String   @unique
   password  String
   name      String?
-  role      Role
+  role      Role     @default(PETUGAS)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  sessions  Session[]
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  createdAt        DateTime @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

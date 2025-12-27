@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { LoginCard } from "./components/auth/LoginCard";
-import { LoginHero } from "./components/auth/LoginHero";
-import { InventoryPage } from "./components/inventory/InventoryPage";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { Label } from "./components/ui/label";
+import { Checkbox } from "./components/ui/checkbox";
 import { ensureSession, fetchMe, login, type User } from "./lib/auth";
 import { queryClient } from "./lib/react-query";
 
@@ -43,10 +44,11 @@ function App() {
     },
   });
 
-  const loading = loginMutation.isPending;
-
-  // DEMO MODE: tampilkan halaman daftar barang tanpa login
-  return <InventoryPage />;
+  const user: User | undefined = meQuery.data;
+  const loading = loginMutation.isPending || meQuery.isFetching;
+  const errorMessage = loginMutation.error
+    ? (loginMutation.error as Error).message || "Gagal masuk"
+    : undefined;
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-white text-slate-900">

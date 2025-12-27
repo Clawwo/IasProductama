@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { JwtModule, JwtSignOptions, JwtModuleOptions } from '@nestjs/jwt';
-import { UsersModule } from '../users/users.module.js';
-import { AuthService } from './auth.service.js';
-import { AuthController } from './auth.controller.js';
-import { JwtStrategy } from './strategies/jwt.strategy.js';
+import { UsersModule } from '../users/users.module';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
@@ -12,7 +12,10 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
         const expiresIn = (process.env.JWT_ACCESS_EXPIRES ??
           '15m') as JwtSignOptions['expiresIn'];
         return {
-          secret: process.env.JWT_ACCESS_SECRET ?? 'dev-access-secret',
+          secret:
+            process.env.JWT_ACCESS_SECRET ??
+            process.env.JWT_SECRET ??
+            'dev-access-secret',
           signOptions: { expiresIn },
         } satisfies JwtModuleOptions;
       },
@@ -20,6 +23,6 @@ import { JwtStrategy } from './strategies/jwt.strategy.js';
     UsersModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, RolesGuard],
 })
 export class AuthModule {}
