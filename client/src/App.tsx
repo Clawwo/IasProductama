@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -36,9 +37,22 @@ function App() {
 
   const user: User | undefined = meQuery.data;
   const loading = loginMutation.isPending || meQuery.isFetching;
-  const errorMessage = loginMutation.error
-    ? (loginMutation.error as Error).message || "Gagal masuk"
-    : undefined;
+  const errorMessage = (() => {
+    if (!loginMutation.error) return undefined;
+    const err = loginMutation.error as AxiosError<{ message?: string } | string>;
+    // Prefer server-provided message (Nest sends { message: string | string[] })
+    if (err.response?.data) {
+      const data = err.response.data;
+      if (typeof data === "string") return data;
+      if (Array.isArray((data as { message?: string | string[] }).message)) {
+        return (data as { message?: string[] }).message?.join("; ") ?? "Gagal masuk";
+      }
+      if (typeof (data as { message?: unknown }).message === "string") {
+        return (data as { message?: string }).message ?? "Gagal masuk";
+      }
+    }
+    return err.message || "Gagal masuk";
+  })();
 
   return (
     <div className="min-h-screen bg-white text-slate-900">

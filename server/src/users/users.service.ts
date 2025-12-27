@@ -1,5 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { Role, User } from '../../generated/prisma/client';
+import { Role, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 
@@ -12,7 +12,8 @@ export class UsersService {
     if (existing) {
       throw new ConflictException('Email already in use');
     }
-    return this.prisma.user.create({ data });
+    const role = data.role ?? Role.PETUGAS;
+    return this.prisma.user.create({ data: { ...data, role } });
   }
 
   async findByEmail(email: string): Promise<User | null> {

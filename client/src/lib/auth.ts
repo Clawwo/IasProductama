@@ -11,6 +11,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 export type Tokens = {
   accessToken: string;
   refreshToken: string;
+  sessionId: string;
 };
 
 export type User = {
@@ -27,7 +28,7 @@ export type AuthResponse = Tokens & { user: Omit<User, "password"> };
 
 type LoginDto = { email: string; password: string };
 
-type RefreshDto = { refreshToken: string };
+type RefreshDto = { sessionId: string; refreshToken: string };
 
 const TOKEN_KEY = "auth_tokens";
 let inMemoryTokens: Tokens | null = loadTokens();
@@ -73,6 +74,10 @@ export function getRefreshToken() {
   return getTokens()?.refreshToken ?? null;
 }
 
+export function getSessionId() {
+  return getTokens()?.sessionId ?? null;
+}
+
 function createApiClient(): AxiosInstance {
   const instance = axios.create({
     baseURL: API_URL,
@@ -116,7 +121,11 @@ export const api = createApiClient();
 
 export async function login(dto: LoginDto): Promise<AuthResponse> {
   const { data } = await api.post<AuthResponse>("/auth/login", dto);
-  setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+  setTokens({
+    accessToken: data.accessToken,
+    refreshToken: data.refreshToken,
+    sessionId: data.sessionId,
+  });
   return data;
 }
 
@@ -127,20 +136,22 @@ export async function fetchMe(): Promise<User> {
 
 export async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
+  const tokens = getTokens();
+  if (!tokens?.refreshToken || !tokens.sessionId) return null;
 
   refreshPromise = (async () => {
     try {
       const { data } = await axios.post<AuthResponse>(
         `${API_URL}/auth/refresh`,
         {
-          refreshToken,
+          refreshToken: tokens.refreshToken,
+          sessionId: tokens.sessionId,
         } satisfies RefreshDto
       );
       setTokens({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
+        sessionId: data.sessionId,
       });
       return data.accessToken;
     } catch {
@@ -155,9 +166,28 @@ export async function refreshAccessToken(): Promise<string | null> {
 }
 
 export async function ensureSession() {
-  const hasTokens = !!getRefreshToken();
+  const tokens = getTokens();
+  const hasTokens = !!tokens?.refreshToken && !!tokens?.sessionId;
   if (!hasTokens) return null;
   const token = await refreshAccessToken();
   if (!token) return null;
   return fetchMe();
+}
+
+export async function logout() {
+  const tokens = getTokens();
+  if (!tokens) {
+    clearTokens();
+    return;
+  }
+
+  try {
+    await api.post("/auth/logout", {
+      refreshToken: tokens.refreshToken,
+      sessionId: tokens.sessionId,
+    } satisfies RefreshDto);
+  } finally {
+    clearTokens();
+    queryClient.invalidateQueries({ queryKey: ["me"] });
+  }
 }

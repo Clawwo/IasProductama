@@ -3,9 +3,10 @@ import {
   Controller,
   Get,
   Post,
-  Request,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -19,23 +20,35 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  register(@Body() dto: RegisterDto): Promise<AuthResponse> {
-    return this.authService.register(dto);
+  register(@Body() dto: RegisterDto, @Req() req: Request): Promise<AuthResponse> {
+    return this.authService.register(dto, this.buildMeta(req));
   }
 
   @Post('login')
-  login(@Body() dto: LoginDto): Promise<AuthResponse> {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request): Promise<AuthResponse> {
+    return this.authService.login(dto, this.buildMeta(req));
   }
 
   @Post('refresh')
-  refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponse> {
-    return this.authService.refresh(dto);
+  refresh(@Body() dto: RefreshTokenDto, @Req() req: Request): Promise<AuthResponse> {
+    return this.authService.refresh(dto, this.buildMeta(req));
+  }
+
+  @Post('logout')
+  logout(@Body() dto: RefreshTokenDto) {
+    return this.authService.logout(dto);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@Request() req: { user: JwtPayload }) {
+  me(@Req() req: { user: JwtPayload }) {
     return this.authService.me(req.user);
+  }
+
+  private buildMeta(req: Request) {
+    return {
+      userAgent: req.headers['user-agent'] ?? null,
+      ipAddress: (req.headers['x-forwarded-for'] as string) ?? req.ip ?? null,
+    };
   }
 }
