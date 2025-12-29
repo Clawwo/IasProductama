@@ -16,6 +16,22 @@ class InboundLineDto {
   @IsNotEmpty()
   code!: string;
 
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  subCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  kind?: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(1)

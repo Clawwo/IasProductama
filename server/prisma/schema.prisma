@@ -66,3 +66,14 @@ model InboundLine {
 
   @@index([inboundId])
 }
+
+model Item {
+  code        String   @id
+  name        String?
+  category    String?
+  subCategory String?
+  kind        String?
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
