@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,10 +58,27 @@ import {
   type InventoryItemWithKind,
 } from "./items";
 
+type Env = { VITE_API_BASE?: string };
+const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
+  .trim()
+  .replace(/\/$/, "");
+const ITEMS_URL = `${API_BASE}/api/items`;
+
+type RemoteItem = {
+  code: string;
+  name?: string;
+  category?: string;
+  subCategory?: string;
+  kind?: string;
+  stock: number;
+};
+
 export function InventoryPage() {
-  const [items, setItems] = useState<InventoryItemWithKind[]>(
-    inventoryItemsWithKind
-  );
+  const [items, setItems] = useState<InventoryItemWithKind[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -86,6 +103,50 @@ export function InventoryPage() {
   const [ringSize, setRingSize] = useState<string>("all");
   const [ringColor, setRingColor] = useState<string>("all");
   const [ringHoles, setRingHoles] = useState<string>("all");
+
+  const fetchItems = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(ITEMS_URL);
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as RemoteItem[];
+      const staticMap = new Map(
+        inventoryItemsWithKind.map((base) => [base.code, base])
+      );
+      const fromApi = data.map((it) => {
+        const base = staticMap.get(it.code);
+        const merged = {
+          ...base,
+          ...it,
+          name: it.name ?? base?.name ?? "",
+          category: it.category ?? base?.category ?? "",
+          subCategory: it.subCategory ?? base?.subCategory,
+          stock: it.stock ?? base?.stock ?? 0,
+        } as InventoryItemWithKind;
+        return {
+          ...merged,
+          kind:
+            (it.kind as InventoryItemWithKind["kind"] | undefined) ??
+            base?.kind ??
+            inferKind(merged),
+        };
+      });
+      const missingStatic = inventoryItemsWithKind
+        .filter((base) => !fromApi.some((api) => api.code === base.code))
+        .map((base) => ({ ...base, stock: 0 }));
+      setItems([...fromApi, ...missingStatic]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Gagal memuat data.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -209,7 +270,8 @@ export function InventoryPage() {
     setShowForm(true);
   }
 
-  function saveForm() {
+  async function saveForm() {
+    setFormError(null);
     if (!form.code.trim() || !form.name.trim() || !form.category.trim()) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
       return;
@@ -219,34 +281,65 @@ export function InventoryPage() {
       return;
     }
 
-    const itemWithKind: InventoryItemWithKind = {
+    const payload: InventoryItemWithKind = {
       ...form,
+      code: form.code.trim(),
+      name: form.name.trim(),
+      category: form.category.trim(),
       kind: inferKind(form),
     };
 
-    setItems((prev) => {
-      const exists = prev.find((it) => it.code === form.code);
-      if (editing) {
-        return prev.map((it) => (it.code === editing.code ? itemWithKind : it));
-      }
-      if (exists) {
-        setFormError(
-          "Kode sudah ada. Gunakan kode lain atau edit item tersebut."
-        );
-        return prev;
-      }
-      return [...prev, itemWithKind];
-    });
-    setShowForm(false);
+    if (!editing && items.some((it) => it.code === payload.code)) {
+      setFormError(
+        "Kode sudah ada. Gunakan kode lain atau edit item tersebut."
+      );
+      return;
+    }
+
+    setSaving(true);
+    setFormError(null);
+    try {
+      const targetUrl = editing
+        ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
+        : ITEMS_URL;
+      const res = await fetch(targetUrl, {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await fetchItems();
+      setShowForm(false);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menyimpan data.";
+      setFormError(message);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function deleteItem(code: string) {
-    setItems((prev) => prev.filter((it) => it.code !== code));
+  async function deleteItem(code: string) {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await fetchItems();
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menghapus data.";
+      setError(message);
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!pendingDelete) return;
-    deleteItem(pendingDelete.code);
+    await deleteItem(pendingDelete.code);
     setPendingDelete(null);
   }
 
@@ -277,9 +370,12 @@ export function InventoryPage() {
             </div>
           </div>
           <p className="text-sm text-slate-600">
-            Filter berdasarkan nama/kode atau kategori. Stok saat ini
-            placeholder; sesuaikan dengan data real.
+            Filter berdasarkan nama/kode atau kategori. Stok disinkronkan dari
+            server.
           </p>
+          {error ? (
+            <p className="text-sm text-red-600">Gagal memuat data: {error}</p>
+          ) : null}
         </header>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -550,21 +646,32 @@ export function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paged.map((item, idx) => {
-                  const rowNumber = (currentPage - 1) * perPage + idx + 1;
-                  const displayCode = buildDisplayCode(item);
-                  return (
-                    <Row
-                      key={item.code}
-                      item={item}
-                      displayCode={displayCode}
-                      rowNumber={rowNumber}
-                      onEdit={() => openEditForm(item)}
-                      onDelete={() => setPendingDelete(item)}
-                    />
-                  );
-                })}
-                {filtered.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="py-6 text-center text-sm text-slate-500"
+                    >
+                      Memuat data...
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paged.map((item, idx) => {
+                    const rowNumber = (currentPage - 1) * perPage + idx + 1;
+                    const displayCode = buildDisplayCode(item);
+                    return (
+                      <Row
+                        key={item.code}
+                        item={item}
+                        displayCode={displayCode}
+                        rowNumber={rowNumber}
+                        onEdit={() => openEditForm(item)}
+                        onDelete={() => setPendingDelete(item)}
+                      />
+                    );
+                  })
+                )}
+                {!loading && filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={6}
@@ -637,8 +744,9 @@ export function InventoryPage() {
             <AlertDialogAction
               className="bg-red-600 text-white hover:bg-red-700"
               onClick={confirmDelete}
+              disabled={deleting}
             >
-              Hapus
+              {deleting ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -734,8 +842,9 @@ export function InventoryPage() {
                 <Button
                   className="bg-sky-600 text-white hover:bg-sky-700"
                   onClick={saveForm}
+                  disabled={saving}
                 >
-                  Simpan
+                  {saving ? "Menyimpan..." : "Simpan"}
                 </Button>
               </div>
             </div>

@@ -4,7 +4,11 @@ import { LoginCard } from "./components/auth/LoginCard";
 import { LoginHero } from "./components/auth/LoginHero";
 import { InventoryPage } from "./components/inventory/InventoryPage";
 import { InboundPage } from "./components/inventory/InboundPage";
-import { DashboardPage, SidebarNav, type AppNavKey } from "./components/dashboard/DashboardPage";
+import {
+  DashboardPage,
+  SidebarNav,
+  type AppNavKey,
+} from "./components/dashboard/DashboardPage";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -13,7 +17,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ensureSession, fetchMe, login, type User } from "./lib/auth";
 import { queryClient } from "./lib/react-query";
@@ -94,7 +102,13 @@ function App() {
     window.location.hash = next === "dashboard" ? "#dashboard" : `#${next}`;
   };
 
-  const Shell = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  const Shell = ({
+    title,
+    children,
+  }: {
+    title: string;
+    children: React.ReactNode;
+  }) => (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
         <SidebarNav active={view} onNavigate={handleNavigate} />

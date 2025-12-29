@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Plus,
   Save,
   CheckCircle,
@@ -31,10 +50,14 @@ import {
 } from "lucide-react";
 import { inventoryItemsWithKind } from "./items";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || "";
+type Env = { VITE_API_BASE?: string };
+const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
 const INBOUND_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/inbound`;
+const ITEMS_URL = `${
+  API_BASE ? API_BASE.replace(/\/$/, "") : ""
+}/api/items`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -85,6 +108,23 @@ type LineItem = {
   note?: string;
 };
 
+type RemoteItem = {
+  code: string;
+  name?: string;
+  category?: string;
+  subCategory?: string;
+  kind?: string;
+  stock: number;
+};
+
+type ToastVariant = "default" | "destructive";
+type Toast = {
+  id: string;
+  variant: ToastVariant;
+  title: string;
+  message?: string;
+};
+
 export function InboundPage() {
   const [vendor, setVendor] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -115,119 +155,155 @@ export function InboundPage() {
   const [submitMessage, setSubmitMessage] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
+
+  function pushToast(variant: ToastVariant, title: string, message?: string) {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, variant, title, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4200);
+  }
+
+  const fetchItems = useCallback(async () => {
+    try {
+      const res = await fetch(ITEMS_URL);
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as RemoteItem[];
+      setRemoteItems(data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
+      pushToast("destructive", "Gagal memuat stok", message);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchItems();
+  }, [fetchItems]);
+
+  const mergedItems = useMemo(() => {
+    const stockMap = new Map(remoteItems.map((it) => [it.code, it.stock]));
+    return inventoryItemsWithKind.map((it) => ({
+      ...it,
+      stock: stockMap.has(it.code) ? stockMap.get(it.code)! : 0,
+    }));
+  }, [remoteItems]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => set.add(it.category));
+    mergedItems.forEach((it) => set.add(it.category));
     return ["all", ...Array.from(set).sort()];
-  }, []);
+  }, [mergedItems]);
 
   const ringSubOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Ring" && it.subCategory) set.add(it.subCategory);
     });
     return ["all", ...Array.from(set)] as Array<"all" | "SNARE" | "TOM">;
-  }, []);
+  }, [mergedItems]);
 
   const ringSizeOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Ring") {
         const size = getInchSize(it.name);
         if (size) set.add(size);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const ringHoleOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Ring") {
         const hole = getRingHoles(it.name);
         if (hole) set.add(hole);
       }
     });
     return ["all", ...Array.from(set).sort()];
-  }, []);
+  }, [mergedItems]);
 
   const ringColorOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Ring") {
         const color = getRingColor(it.name);
         if (color) set.add(color);
       }
     });
     return ["all", ...Array.from(set)];
-  }, []);
+  }, [mergedItems]);
 
   const bodyKindOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Body") {
         const label = getBodyKindLabel(it.kind);
         if (label) set.add(label);
       }
     });
     return ["all", ...Array.from(set)];
-  }, []);
+  }, [mergedItems]);
 
   const bodySizeOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Body") {
         const size = getInchSize(it.name);
         if (size) set.add(size);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const headSizeOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Head") {
         const size = getInchSize(it.name);
         if (size) set.add(size);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const lugSizeOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Lug") {
         const size = getCmSize(it.name);
         if (size) set.add(size);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const pipeLengthOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Pipe") {
         const len = getCmSize(it.name);
         if (len) set.add(len);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const packSizeOptions = useMemo(() => {
     const set = new Set<string>();
-    inventoryItemsWithKind.forEach((it) => {
+    mergedItems.forEach((it) => {
       if (it.category === "Pack") {
         const size = getInchSize(it.name);
         if (size) set.add(size);
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, []);
+  }, [mergedItems]);
 
   const totals = useMemo(() => {
     const totalItem = lines.length;
@@ -267,7 +343,7 @@ export function InboundPage() {
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    return inventoryItemsWithKind.filter((it) => {
+    return mergedItems.filter((it) => {
       if (selectedCategory !== "all" && it.category !== selectedCategory)
         return false;
 
@@ -327,6 +403,7 @@ export function InboundPage() {
     pipeLength,
     packSize,
     searchTerm,
+    mergedItems,
   ]);
 
   const filterControls: React.ReactNode[] = useMemo(() => {
@@ -509,10 +586,15 @@ export function InboundPage() {
     setLineItem({ code: "", name: "", qty: 1, note: "" });
     setSearchTerm("");
     setFormError("");
+    pushToast("default", "Baris ditambahkan", `${lineItem.code} - ${lineItem.name}`);
   }
 
   function removeLine(id: string) {
+    const target = lines.find((l) => l.id === id);
     setLines((prev) => prev.filter((l) => l.id !== id));
+    if (target) {
+      pushToast("default", "Baris dihapus", `${target.code} - ${target.name}`);
+    }
   }
 
   async function handleComplete() {
@@ -533,7 +615,18 @@ export function InboundPage() {
       vendor: vendor.trim(),
       date,
       note: note.trim() || undefined,
-      lines: lines.map((l) => ({ code: l.code, qty: l.qty, note: l.note })),
+      lines: lines.map((l) => {
+        const meta = mergedItems.find((it) => it.code === l.code);
+        return {
+          code: l.code,
+          name: l.name,
+          category: meta?.category,
+          subCategory: meta?.subCategory,
+          kind: meta?.kind,
+          qty: l.qty,
+          note: l.note,
+        };
+      }),
     };
 
     try {
@@ -551,14 +644,19 @@ export function InboundPage() {
       }
       setSubmitStatus("success");
       setSubmitMessage("Berhasil disimpan.");
-    } catch (err: any) {
+      pushToast("default", "Barang masuk disimpan", "Data penerimaan berhasil dicatat.");
+      fetchItems();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Gagal menyimpan.";
       setSubmitStatus("error");
-      setSubmitMessage(err?.message || "Gagal menyimpan.");
+      setSubmitMessage(message);
+      pushToast("destructive", "Gagal menyimpan", message);
     }
   }
 
   return (
     <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
+      <ToastRegion toasts={toasts} />
       <div className="space-y-6">
         <header className="space-y-3">
           <div className="flex flex-wrap items-center gap-3">
@@ -585,12 +683,35 @@ export function InboundPage() {
               >
                 <Save className="mr-2 size-4" /> Simpan draft
               </Button>
-              <Button
-                onClick={handleComplete}
-                disabled={submitStatus === "loading"}
-              >
-                <CheckCircle className="mr-2 size-4" /> Tandai selesai
-              </Button>
+              <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={submitStatus === "loading"}>
+                    <CheckCircle className="mr-2 size-4" /> Tandai selesai
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogPortal>
+                  <AlertDialogOverlay />
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Konfirmasi simpan</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Simpan penerimaan barang masuk ini?
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Batal</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          setConfirmSubmitOpen(false);
+                          handleComplete();
+                        }}
+                      >
+                        Ya, simpan
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialogPortal>
+              </AlertDialog>
             </div>
           </div>
 
@@ -666,7 +787,7 @@ export function InboundPage() {
           </div>
 
           <div
-            className="grid grid-cols-1 gap-3 md:items-end md:[grid-template-columns:var(--cols)]"
+            className="grid grid-cols-1 gap-3 md:items-end md:grid-cols-(--cols)"
             style={{ ["--cols" as string]: gridTemplateColumns }}
           >
             <DropdownMenu>
@@ -711,7 +832,7 @@ export function InboundPage() {
                   <Search className="size-4 text-slate-500" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-[360px] p-0">
+              <DropdownMenuContent align="start" className="w-90 p-0">
                 <div className="p-2">
                   <Input
                     autoFocus
@@ -769,13 +890,13 @@ export function InboundPage() {
                     >
                       <div className="flex flex-col">
                         <span
-                          className="font-semibold text-slate-900 truncate max-w-[280px]"
+                          className="font-semibold text-slate-900 truncate max-w-70"
                           title={it.code}
                         >
                           {it.code}
                         </span>
                         <span
-                          className="text-xs text-slate-600 truncate max-w-[280px]"
+                          className="text-xs text-slate-600 truncate max-w-70"
                           title={it.name}
                         >
                           {it.name}
@@ -851,14 +972,41 @@ export function InboundPage() {
                     {line.note || "-"}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-slate-500 hover:text-red-600"
-                      onClick={() => removeLine(line.id)}
+                    <AlertDialog
+                      open={confirmRemoveId === line.id}
+                      onOpenChange={(open) =>
+                        setConfirmRemoveId(open ? line.id : null)
+                      }
                     >
-                      <Trash2 className="size-4" />
-                    </Button>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-slate-500 hover:text-red-600"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Hapus baris ini?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            {line.code} — {line.name}
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Batal</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              removeLine(line.id);
+                              setConfirmRemoveId(null);
+                            }}
+                          >
+                            Hapus
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </TableCell>
                 </TableRow>
               ))}
@@ -876,6 +1024,30 @@ export function InboundPage() {
           </Table>
         </section>
       </div>
+    </div>
+  );
+}
+
+function ToastRegion({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-60 flex flex-col gap-2 sm:right-6 sm:top-6">
+      {toasts.map((toast) => (
+        // Color-code success vs error toasts
+        // default -> green-ish, destructive -> red
+        <Alert
+          key={toast.id}
+          variant={toast.variant === "destructive" ? "destructive" : "default"}
+          className={cn(
+            "pointer-events-auto shadow-lg",
+            toast.variant === "destructive"
+              ? "border-red-200 bg-red-50 text-red-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          )}
+        >
+          <AlertTitle>{toast.title}</AlertTitle>
+          {toast.message ? <AlertDescription>{toast.message}</AlertDescription> : null}
+        </Alert>
+      ))}
     </div>
   );
 }
@@ -920,16 +1092,16 @@ function LabeledInput({
   );
 }
 
-function FilterDropdown({
+function FilterDropdown<T extends string>({
   label,
   value,
   options,
   onSelect,
 }: {
   label: string;
-  value: string;
-  options: string[];
-  onSelect: (v: string) => void;
+  value: T;
+  options: T[];
+  onSelect: (v: T) => void;
 }) {
   return (
     <DropdownMenu>
