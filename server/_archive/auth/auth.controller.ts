@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
-import { AuthService, AuthResponse } from './auth.service';
+import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { AuthResponse } from './auth.service';
 
 @Controller('auth')
 export class AuthController {

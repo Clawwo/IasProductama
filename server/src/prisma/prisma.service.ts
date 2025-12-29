@@ -10,23 +10,18 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     // Ensure .env is loaded when running via Nest CLI
     config();
 
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
+    const url = process.env.DATABASE_URL;
+
+    if (!url) {
       throw new Error(
         'DATABASE_URL is missing; set it in your environment or .env file',
       );
     }
 
-    const pool = new Pool({ connectionString: String(connectionString) });
+    const pool = new Pool({ connectionString: url });
     super({ adapter: new PrismaPg(pool) });
   }
   async onModuleInit() {
     await this.$connect();
-  }
-
-  async enableShutdownHooks(app: INestApplication) {
-    this.$on('beforeExit', async () => {
-      await app.close();
-    });
   }
 }

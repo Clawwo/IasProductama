@@ -1,9 +1,7 @@
-import { randomBytes } from 'crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
-import { Role, User } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { User } from '../../generated/prisma/client';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -21,7 +19,7 @@ export interface SessionTokens {
   sessionId: string;
 }
 
-export interface AuthResponse extends SessionTokens {
+export interface AuthResponse extends TokenPair {
   user: Omit<User, 'password'>;
 }
 
@@ -52,8 +50,27 @@ export class AuthService {
     };
   }
 
+  private buildPayload(user: User): JwtPayload {
+    return { sub: user.id, email: user.email, role: user.role };
+  }
+
+  private async signTokens(user: User): Promise<TokenPair> {
+    const payload = this.buildPayload(user);
+    const accessToken = await this.jwtService.signAsync(payload);
+    const refreshOptions: JwtSignOptions = {
+      secret: this.refreshConfig.secret,
+      expiresIn: this.refreshConfig.expiresIn as JwtSignOptions['expiresIn'],
+    };
+    const refreshToken = await this.jwtService.signAsync(
+      payload,
+      refreshOptions,
+    );
+    return { accessToken, refreshToken };
+  }
+
   private sanitizeUser(user: User): Omit<User, 'password'> {
-    const { password: _pw, ...rest } = user;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...rest } = user;
     return rest;
   }
 
@@ -190,7 +207,7 @@ export class AuthService {
     return { success: true };
   }
 
-  async me(payload: JwtPayload): Promise<Omit<User, 'password'>> {
+  async me(payload: JwtPayload): Promise<Omit<UserModel, 'password'>> {
     const user = await this.usersService.findById(payload.sub);
     if (!user || !user.isActive) {
       throw new UnauthorizedException();

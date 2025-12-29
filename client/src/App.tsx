@@ -3,6 +3,18 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { LoginCard } from "./components/auth/LoginCard";
 import { LoginHero } from "./components/auth/LoginHero";
 import { InventoryPage } from "./components/inventory/InventoryPage";
+import { InboundPage } from "./components/inventory/InboundPage";
+import { DashboardPage, SidebarNav, type AppNavKey } from "./components/dashboard/DashboardPage";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { ensureSession, fetchMe, login, type User } from "./lib/auth";
 import { queryClient } from "./lib/react-query";
 
@@ -68,8 +80,63 @@ function App() {
 
   const loading = loginMutation.isPending;
 
-  // DEMO MODE: tampilkan halaman daftar barang tanpa login
-  return <InventoryPage />;
+  const handleNavigate = (key: AppNavKey) => {
+    const map: Record<AppNavKey, View> = {
+      dashboard: "dashboard",
+      inventory: "inventory",
+      masuk: "masuk",
+      keluar: "inventory",
+      riwayat: "dashboard",
+      pengaturan: "dashboard",
+    };
+    const next = map[key] ?? "dashboard";
+    setView(next);
+    window.location.hash = next === "dashboard" ? "#dashboard" : `#${next}`;
+  };
+
+  const Shell = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
+        <SidebarNav active={view} onNavigate={handleNavigate} />
+        <SidebarInset className="flex-1">
+          <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white/90 px-4 py-3 backdrop-blur md:px-6">
+            <SidebarTrigger />
+            <Separator orientation="vertical" className="h-6" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="#dashboard">Beranda</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{title}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </header>
+          <main className="px-4 py-6 md:px-6 md:py-8">{children}</main>
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
+  );
+
+  if (view === "dashboard") {
+    return <DashboardPage onNavigate={handleNavigate} />;
+  }
+
+  if (view === "inventory") {
+    return (
+      <Shell title="Inventory">
+        <InventoryPage />
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell title="Barang Masuk">
+      <InboundPage />
+    </Shell>
+  );
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-white text-slate-900">

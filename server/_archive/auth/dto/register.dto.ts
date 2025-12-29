@@ -1,4 +1,3 @@
-import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
@@ -6,7 +5,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
-import { Role } from '@prisma/client';
+import { Role } from '../../../generated/prisma/client';
 
 export class RegisterDto {
   @IsEmail()
