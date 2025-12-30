@@ -1,20 +1,3 @@
--- CreateEnum
-CREATE TYPE "Role" AS ENUM ('ADMIN', 'PETUGAS');
-
--- CreateTable
-CREATE TABLE "User" (
-    "id" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "password" TEXT NOT NULL,
-    "name" TEXT,
-    "role" "Role" NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateTable
 CREATE TABLE "Inbound" (
     "id" TEXT NOT NULL,
@@ -37,9 +20,6 @@ CREATE TABLE "InboundLine" (
 
     CONSTRAINT "InboundLine_pkey" PRIMARY KEY ("id")
 );
-
--- CreateIndex
-CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
 CREATE INDEX "InboundLine_inboundId_idx" ON "InboundLine"("inboundId");

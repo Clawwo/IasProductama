@@ -4,6 +4,7 @@ import { LoginCard } from "./components/auth/LoginCard";
 import { LoginHero } from "./components/auth/LoginHero";
 import { InventoryPage } from "./components/inventory/InventoryPage";
 import { InboundPage } from "./components/inventory/InboundPage";
+import { OutboundPage } from "./components/inventory/OutboundPage";
 import {
   DashboardPage,
   SidebarNav,
@@ -27,13 +28,15 @@ import { ensureSession, fetchMe, login, type User } from "./lib/auth";
 import { queryClient } from "./lib/react-query";
 
 function App() {
-  type View = "dashboard" | "inventory" | "masuk";
+  type View = "dashboard" | "inventory" | "masuk" | "keluar";
 
   const [view, setView] = useState<View>(() =>
     window.location.hash === "#inventory"
       ? "inventory"
       : window.location.hash === "#masuk"
       ? "masuk"
+      : window.location.hash === "#keluar"
+      ? "keluar"
       : "dashboard"
   );
 
@@ -54,6 +57,8 @@ function App() {
         setView("inventory");
       } else if (window.location.hash === "#masuk") {
         setView("masuk");
+      } else if (window.location.hash === "#keluar") {
+        setView("keluar");
       } else {
         setView("dashboard");
       }
@@ -93,7 +98,7 @@ function App() {
       dashboard: "dashboard",
       inventory: "inventory",
       masuk: "masuk",
-      keluar: "inventory",
+      keluar: "keluar",
       riwayat: "dashboard",
       pengaturan: "dashboard",
     };
@@ -142,6 +147,14 @@ function App() {
     return (
       <Shell title="Inventory">
         <InventoryPage />
+      </Shell>
+    );
+  }
+
+  if (view === "keluar") {
+    return (
+      <Shell title="Barang Keluar">
+        <OutboundPage />
       </Shell>
     );
   }

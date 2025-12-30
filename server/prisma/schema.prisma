@@ -67,6 +67,27 @@ model InboundLine {
   @@index([inboundId])
 }
 
+model Outbound {
+  id        String         @id @default(uuid())
+  orderer   String
+  date      DateTime
+  note      String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  lines     OutboundLine[]
+}
+
+model OutboundLine {
+  id         String    @id @default(uuid())
+  outboundId String
+  outbound   Outbound  @relation(fields: [outboundId], references: [id], onDelete: Cascade)
+  code       String
+  qty        Int
+  note       String?
+
+  @@index([outboundId])
+}
+
 model Item {
   code        String   @id
   name        String?

@@ -46,17 +46,14 @@ import {
   Calendar,
   StickyNote,
   Search,
+  UserRound,
 } from "lucide-react";
 import { inventoryItemsWithKind } from "./items";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
-const INBOUND_URL = `${
-  API_BASE ? API_BASE.replace(/\/$/, "") : ""
-}/api/inbound`;
-const ITEMS_URL = `${
-  API_BASE ? API_BASE.replace(/\/$/, "") : ""
-}/api/items`;
+const OUTBOUND_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/outbound`;
+const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -124,7 +121,8 @@ type Toast = {
   message?: string;
 };
 
-export function InboundPage() {
+export function OutboundPage() {
+  const [orderer, setOrderer] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [lineItem, setLineItem] = useState({
@@ -173,7 +171,8 @@ export function InboundPage() {
       const data = (await res.json()) as RemoteItem[];
       setRemoteItems(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
+      const message =
+        err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
       pushToast("destructive", "Gagal memuat stok", message);
     }
   }, []);
@@ -609,6 +608,10 @@ export function InboundPage() {
   }
 
   async function handleComplete() {
+    if (!orderer.trim()) {
+      setFormError("Isi pemesan terlebih dahulu.");
+      return;
+    }
     if (!date) {
       setFormError("Tanggal tidak boleh kosong.");
       return;
@@ -619,6 +622,7 @@ export function InboundPage() {
     }
 
     const payload = {
+      orderer: orderer.trim(),
       date,
       note: note.trim() || undefined,
       lines: lines.map((l) => {
@@ -639,7 +643,7 @@ export function InboundPage() {
       setSubmitStatus("loading");
       setSubmitMessage("");
       setFormError("");
-      const res = await fetch(INBOUND_URL, {
+      const res = await fetch(OUTBOUND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -650,7 +654,7 @@ export function InboundPage() {
       }
       setSubmitStatus("success");
       setSubmitMessage("Berhasil disimpan.");
-      pushToast("default", "Barang masuk disimpan", "Data penerimaan berhasil dicatat.");
+      pushToast("default", "Barang keluar disimpan", "Data pengeluaran berhasil dicatat.");
       fetchItems();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Gagal menyimpan.";
@@ -671,11 +675,10 @@ export function InboundPage() {
                 Gudang
               </p>
               <h1 className="text-3xl font-semibold text-slate-900 leading-tight">
-                Barang Masuk
+                Barang Keluar
               </h1>
               <p className="text-sm text-slate-600">
-                Catat penerimaan stok baru atau retur vendor dengan detail yang
-                terstruktur.
+                Catat pengeluaran stok untuk pengiriman, peminjaman, atau permintaan lainnya.
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -701,7 +704,7 @@ export function InboundPage() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Konfirmasi simpan</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Simpan penerimaan barang masuk ini?
+                        Simpan pencatatan barang keluar ini?
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -730,7 +733,7 @@ export function InboundPage() {
             <SummaryCard
               label="Total item"
               value={String(totals.totalItem)}
-              sub="Baris diterima"
+              sub="Baris keluar"
             />
             <SummaryCard
               label="Total qty (pcs)"
@@ -740,7 +743,7 @@ export function InboundPage() {
             <SummaryCard
               label="Tanggal"
               value={date || "-"}
-              sub="Tanggal penerimaan"
+              sub="Tanggal keluar"
             />
           </div>
         </header>
@@ -748,13 +751,23 @@ export function InboundPage() {
         <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <LabeledInput
-              label="Tanggal masuk"
+              label="Tanggal keluar"
               icon={<Calendar className="size-4" />}
             >
               <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+              />
+            </LabeledInput>
+            <LabeledInput
+              label="Pemesan"
+              icon={<UserRound className="size-4" />}
+            >
+              <Input
+                placeholder="Nama pemesan"
+                value={orderer}
+                onChange={(e) => setOrderer(e.target.value)}
               />
             </LabeledInput>
             <LabeledInput
@@ -777,7 +790,7 @@ export function InboundPage() {
                 Baris barang
               </p>
               <p className="text-sm text-slate-600">
-                Tambahkan setiap barang yang diterima beserta jumlahnya.
+                Tambahkan setiap barang yang keluar beserta jumlahnya.
               </p>
             </div>
           </div>
@@ -1027,7 +1040,7 @@ export function InboundPage() {
                     colSpan={6}
                     className="py-6 text-center text-sm text-slate-500"
                   >
-                    Belum ada baris. Tambahkan barang masuk di atas.
+                    Belum ada baris. Tambahkan barang keluar di atas.
                   </TableCell>
                 </TableRow>
               ) : null}
@@ -1043,8 +1056,6 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
   return (
     <div className="pointer-events-none fixed right-4 top-4 z-60 flex flex-col gap-2 sm:right-6 sm:top-6">
       {toasts.map((toast) => (
-        // Color-code success vs error toasts
-        // default -> green-ish, destructive -> red
         <Alert
           key={toast.id}
           variant={toast.variant === "destructive" ? "destructive" : "default"}
