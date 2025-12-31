@@ -20,11 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,13 +46,13 @@ import {
 import { inventoryItemsWithKind } from "./items";
 
 type Env = { VITE_API_BASE?: string };
-const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
+const API_BASE = (
+  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? ""
+).trim();
 const INBOUND_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/inbound`;
-const ITEMS_URL = `${
-  API_BASE ? API_BASE.replace(/\/$/, "") : ""
-}/api/items`;
+const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -159,7 +155,8 @@ export function InboundPage() {
       const data = (await res.json()) as RemoteItem[];
       setRemoteItems(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
+      const message =
+        err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
       pushToast("destructive", "Gagal memuat stok", message);
     }
   }, []);
@@ -533,7 +530,11 @@ export function InboundPage() {
     setLineItem({ code: "", name: "", qty: 1, note: "" });
     setSearchTerm("");
     setFormError("");
-    pushToast("default", "Baris ditambahkan", `${lineItem.code} - ${lineItem.name}`);
+    pushToast(
+      "default",
+      "Baris ditambahkan",
+      `${lineItem.code} - ${lineItem.name}`
+    );
   }
 
   function removeLine(id: string) {
@@ -586,7 +587,11 @@ export function InboundPage() {
       }
       setSubmitStatus("success");
       setSubmitMessage("Berhasil disimpan.");
-      pushToast("default", "Barang masuk disimpan", "Data penerimaan berhasil dicatat.");
+      pushToast(
+        "default",
+        "Barang masuk disimpan",
+        "Data penerimaan berhasil dicatat."
+      );
       fetchItems();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Gagal menyimpan.";
@@ -625,9 +630,15 @@ export function InboundPage() {
               >
                 <Save className="size-4" /> Simpan draft
               </Button>
-              <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
+              <AlertDialog
+                open={confirmSubmitOpen}
+                onOpenChange={setConfirmSubmitOpen}
+              >
                 <AlertDialogTrigger asChild>
-                  <Button disabled={submitStatus === "loading"} className="cursor-pointer">
+                  <Button
+                    disabled={submitStatus === "loading"}
+                    className="cursor-pointer"
+                  >
                     <CheckCircle className="size-4" /> Tandai selesai
                   </Button>
                 </AlertDialogTrigger>
@@ -992,7 +1003,9 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>
-          {toast.message ? <AlertDescription>{toast.message}</AlertDescription> : null}
+          {toast.message ? (
+            <AlertDescription>{toast.message}</AlertDescription>
+          ) : null}
         </Alert>
       ))}
     </div>
