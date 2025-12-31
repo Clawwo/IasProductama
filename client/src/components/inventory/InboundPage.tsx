@@ -69,18 +69,6 @@ function getCmSize(text: string): string | null {
   return match ? match[1] : null;
 }
 
-function getRingHoles(text: string): string | null {
-  const match = /lubang\s*([0-9]+)/i.exec(text);
-  return match ? match[1] : null;
-}
-
-function getRingColor(text: string): string | null {
-  const lower = text.toLowerCase();
-  if (lower.includes("hitam")) return "Hitam";
-  if (lower.includes("chrome") || lower.includes("chr")) return "Chrome";
-  return null;
-}
-
 function getBodyKindLabel(kind?: string): string | null {
   switch (kind) {
     case "BODY-SNARE":
@@ -139,8 +127,6 @@ export function InboundPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [ringSub, setRingSub] = useState<"all" | "SNARE" | "TOM">("all");
   const [ringSize, setRingSize] = useState("all");
-  const [ringHole, setRingHole] = useState("all");
-  const [ringColor, setRingColor] = useState("all");
   const [bodyKind, setBodyKind] = useState("all");
   const [bodySize, setBodySize] = useState("all");
   const [headSize, setHeadSize] = useState("all");
@@ -215,28 +201,6 @@ export function InboundPage() {
       }
     });
     return ["all", ...sortNumericStrings(Array.from(set))];
-  }, [mergedItems]);
-
-  const ringHoleOptions = useMemo(() => {
-    const set = new Set<string>();
-    mergedItems.forEach((it) => {
-      if (it.category === "Ring") {
-        const hole = getRingHoles(it.name);
-        if (hole) set.add(hole);
-      }
-    });
-    return ["all", ...Array.from(set).sort()];
-  }, [mergedItems]);
-
-  const ringColorOptions = useMemo(() => {
-    const set = new Set<string>();
-    mergedItems.forEach((it) => {
-      if (it.category === "Ring") {
-        const color = getRingColor(it.name);
-        if (color) set.add(color);
-      }
-    });
-    return ["all", ...Array.from(set)];
   }, [mergedItems]);
 
   const bodyKindOptions = useMemo(() => {
@@ -314,8 +278,6 @@ export function InboundPage() {
   useEffect(() => {
     setRingSub("all");
     setRingSize("all");
-    setRingHole("all");
-    setRingColor("all");
     setBodyKind("all");
     setBodySize("all");
     setHeadSize("all");
@@ -331,8 +293,6 @@ export function InboundPage() {
     selectedCategory,
     ringSub,
     ringSize,
-    ringHole,
-    ringColor,
     bodyKind,
     bodySize,
     headSize,
@@ -351,10 +311,6 @@ export function InboundPage() {
         if (ringSub !== "all" && it.subCategory !== ringSub) return false;
         const size = getInchSize(it.name);
         if (ringSize !== "all" && ringSize !== size) return false;
-        const holes = getRingHoles(it.name);
-        if (ringHole !== "all" && ringHole !== holes) return false;
-        const color = getRingColor(it.name);
-        if (ringColor !== "all" && ringColor !== color) return false;
       }
 
       if (selectedCategory === "Body") {
@@ -394,8 +350,6 @@ export function InboundPage() {
     selectedCategory,
     ringSub,
     ringSize,
-    ringHole,
-    ringColor,
     bodyKind,
     bodySize,
     headSize,
@@ -422,20 +376,6 @@ export function InboundPage() {
           value={ringSize}
           options={ringSizeOptions}
           onSelect={setRingSize}
-        />,
-        <FilterDropdown
-          key="ring-hole"
-          label="Lubang"
-          value={ringHole}
-          options={ringHoleOptions}
-          onSelect={setRingHole}
-        />,
-        <FilterDropdown
-          key="ring-color"
-          label="Warna"
-          value={ringColor}
-          options={ringColorOptions}
-          onSelect={setRingColor}
         />,
       ];
     }
@@ -512,12 +452,8 @@ export function InboundPage() {
     selectedCategory,
     ringSub,
     ringSize,
-    ringHole,
-    ringColor,
     ringSubOptions,
     ringSizeOptions,
-    ringHoleOptions,
-    ringColorOptions,
     bodyKind,
     bodySize,
     headSize,
@@ -678,15 +614,15 @@ export function InboundPage() {
               </Badge>
               <Button
                 variant="outline"
-                className="border-dashed"
+                className="border-dashed cursor-pointer"
                 disabled={submitStatus === "loading"}
               >
-                <Save className="mr-2 size-4" /> Simpan draft
+                <Save className="size-4" /> Simpan draft
               </Button>
               <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
                 <AlertDialogTrigger asChild>
-                  <Button disabled={submitStatus === "loading"}>
-                    <CheckCircle className="mr-2 size-4" /> Tandai selesai
+                  <Button disabled={submitStatus === "loading"} className="cursor-pointer">
+                    <CheckCircle className="size-4" /> Tandai selesai
                   </Button>
                 </AlertDialogTrigger>
                 <AlertDialogPortal>
