@@ -2,6 +2,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Box,
+  Boxes,
   ChartNoAxesCombined,
   ClipboardList,
   History,
@@ -51,6 +52,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
 
 export type AppNavKey =
   | "dashboard"
@@ -59,115 +61,11 @@ export type AppNavKey =
   | "keluar"
   | "riwayat"
   | "pengaturan";
-
-const stats = [
-  {
-    label: "Barang Masuk (hari ini)",
-    value: "128",
-    delta: "+21% vs kemarin",
-    icon: ArrowDownLeft,
-    tone: "from-emerald-500/15 to-emerald-700/10 text-emerald-700",
-  },
-  {
-    label: "Barang Keluar (hari ini)",
-    value: "93",
-    delta: "-8% vs kemarin",
-    icon: ArrowUpRight,
-    tone: "from-amber-500/15 to-amber-700/10 text-amber-700",
-  },
-  {
-    label: "Saldo Stok Siaga",
-    value: "1.284",
-    delta: "+3 gudang terisi",
-    icon: Warehouse,
-    tone: "from-sky-500/15 to-sky-700/10 text-sky-700",
-  },
-  {
-    label: "Peminjaman Aktif",
-    value: "17",
-    delta: "5 butuh follow-up",
-    icon: ShieldCheck,
-    tone: "from-slate-500/15 to-slate-700/10 text-slate-700",
-  },
-];
-
-const movements = [
-  {
-    id: "m1",
-    item: "Snare Lite 14''",
-    type: "Masuk",
-    qty: 12,
-    actor: "Rizky",
-    time: "09:15",
-    note: "Retur vendor: cat ulang",
-  },
-  {
-    id: "m2",
-    item: "Bass 22'' Kayu",
-    type: "Keluar",
-    qty: 4,
-    actor: "Mita",
-    time: "10:40",
-    note: "Pengiriman SMP Bina Bangsa",
-  },
-  {
-    id: "m3",
-    item: "Ring Chrome 12''",
-    type: "Masuk",
-    qty: 26,
-    actor: "Dhani",
-    time: "12:05",
-    note: "Stok safety",
-  },
-  {
-    id: "m4",
-    item: "Tom 10'' Stand",
-    type: "Keluar",
-    qty: 6,
-    actor: "Ajeng",
-    time: "13:22",
-    note: "Peminjaman marching",
-  },
-];
-
-const alerts = [
-  {
-    id: "a1",
-    title: "Snare strap merah",
-    detail: "Sisa 8 set, perlu restock pekan ini",
-    tone: "text-amber-700 bg-amber-50 border-amber-100",
-  },
-  {
-    id: "a2",
-    title: "Ring bass 20''",
-    detail: "Ketersediaan di bawah stok minimum",
-    tone: "text-rose-700 bg-rose-50 border-rose-100",
-  },
-  {
-    id: "a3",
-    title: "Carry harness alumunium",
-    detail: "Batch baru selesai QC, siap masuk gudang",
-    tone: "text-emerald-700 bg-emerald-50 border-emerald-100",
-  },
-];
-
-const quickActions = [
-  {
-    icon: PackagePlus,
-    label: "Catat barang masuk",
-    description: "Terima stok baru atau retur vendor",
-  },
-  {
-    icon: PackageCheck,
-    label: "Catat barang keluar",
-    description: "Pengiriman, peminjaman, atau mutasi",
-  },
-  {
-    icon: ClipboardList,
-    label: "Buat dokumen",
-    description: "Surat jalan, berita acara, atau label",
-  },
-];
+type Env = { VITE_API_BASE?: string };
+const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
+  .trim()
+  .replace(/\/$/, "");
+const ITEMS_URL = `${API_BASE}/api/items`;
 
 export function SidebarNav({
   active = "dashboard",
@@ -278,7 +176,13 @@ function StatCard({
   delta,
   icon: Icon,
   tone,
-}: (typeof stats)[number]) {
+}: {
+  label: string;
+  value: string;
+  delta: string;
+  icon: typeof ArrowDownLeft;
+  tone: string;
+}) {
   return (
     <div className="bg-white border text-sm rounded-xl p-4 shadow-sm">
       <div
@@ -301,43 +205,15 @@ function StatCard({
   );
 }
 
-function MovementRow({
-  item,
-  type,
-  qty,
-  actor,
-  time,
-  note,
-}: (typeof movements)[number]) {
-  const isIn = type === "Masuk";
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="font-medium">{item}</div>
-        <p className="text-xs text-muted-foreground">{note}</p>
-      </TableCell>
-      <TableCell>
-        <Badge
-          className={cn(
-            "rounded-full px-3",
-            isIn
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-orange-50 text-orange-700"
-          )}
-        >
-          {type}
-        </Badge>
-      </TableCell>
-      <TableCell className="font-semibold">
-        {isIn ? `+${qty}` : `-${qty}`}
-      </TableCell>
-      <TableCell className="text-muted-foreground">{actor}</TableCell>
-      <TableCell className="text-muted-foreground">{time}</TableCell>
-    </TableRow>
-  );
-}
-
-function AlertCard({ title, detail, tone }: (typeof alerts)[number]) {
+function AlertCard({
+  title,
+  detail,
+  tone,
+}: {
+  title: string;
+  detail: string;
+  tone: string;
+}) {
   return (
     <div className={cn("border rounded-lg p-3", tone)}>
       <div className="flex items-center gap-2">
@@ -353,9 +229,18 @@ function QuickAction({
   icon: Icon,
   label,
   description,
-}: (typeof quickActions)[number]) {
+  onClick,
+}: {
+  icon: typeof PackagePlus;
+  label: string;
+  description: string;
+  onClick?: () => void;
+}) {
   return (
-    <button className="text-left bg-white border rounded-xl p-4 w-full transition shadow-sm hover:border-slate-300 hover:shadow">
+    <button
+      className="text-left bg-white border rounded-xl p-4 w-full transition shadow-sm hover:border-slate-300 hover:shadow"
+      onClick={onClick}
+    >
       <div className="flex items-center gap-3">
         <span className="bg-slate-900 text-white grid size-10 place-items-center rounded-lg">
           <Icon className="size-5" />
@@ -369,7 +254,11 @@ function QuickAction({
   );
 }
 
-function DashboardHeader() {
+function DashboardHeader({
+  onNavigate,
+}: {
+  onNavigate?: (key: AppNavKey) => void;
+}) {
   return (
     <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b bg-white/85 px-4 py-3 backdrop-blur md:px-6">
       <div className="flex items-center gap-2">
@@ -389,11 +278,15 @@ function DashboardHeader() {
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <Input placeholder="Cari barang atau kode" className="w-48 md:w-64" />
-        <Button variant="outline" className="border-dashed">
+        <Button
+          variant="outline"
+          className="border-dashed"
+          onClick={() => onNavigate?.("masuk")}
+        >
           <ArrowDownLeft className="mr-2 size-4" />
           Catat masuk
         </Button>
-        <Button>
+        <Button onClick={() => onNavigate?.("keluar")}>
           <ArrowUpRight className="mr-2 size-4" />
           Catat keluar
         </Button>
@@ -447,12 +340,111 @@ export function DashboardPage({
 }: {
   onNavigate?: (key: AppNavKey) => void;
 }) {
+  const [items, setItems] = useState<Array<{ code: string; stock: number; name?: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(ITEMS_URL);
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as Array<{ code: string; stock: number; name?: string }>;
+        if (!cancelled) setItems(data);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Gagal memuat stok.";
+        if (!cancelled) setError(message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const summary = useMemo(() => {
+    const totalSku = items.length;
+    const totalStock = items.reduce((sum, it) => sum + (it.stock ?? 0), 0);
+    const lowStock = items.filter((it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5);
+    const emptyStock = items.filter((it) => (it.stock ?? 0) === 0);
+    return { totalSku, totalStock, lowStock, emptyStock };
+  }, [items]);
+
+  const stats = useMemo(
+    () => [
+      {
+        label: "Total SKU",
+        value: String(summary.totalSku ?? 0),
+        delta: "Semua kode terdaftar",
+        icon: Boxes,
+        tone: "from-slate-500/15 to-slate-700/10 text-slate-700",
+      },
+      {
+        label: "Total stok (pcs)",
+        value: String(summary.totalStock ?? 0),
+        delta: "Jumlah seluruh item",
+        icon: Warehouse,
+        tone: "from-sky-500/15 to-sky-700/10 text-sky-700",
+      },
+      {
+        label: "Stok menipis",
+        value: String(summary.lowStock.length ?? 0),
+        delta: "<= 5 pcs",
+        icon: TrendingUp,
+        tone: "from-amber-500/15 to-amber-700/10 text-amber-700",
+      },
+      {
+        label: "Stok habis",
+        value: String(summary.emptyStock.length ?? 0),
+        delta: "Butuh restock",
+        icon: ShieldCheck,
+        tone: "from-rose-500/15 to-rose-700/10 text-rose-700",
+      },
+    ],
+    [summary]
+  );
+
+  const alerts = useMemo(() => {
+    const low = summary.lowStock.slice(0, 5);
+    return low.map((it) => ({
+      id: it.code,
+      title: it.name ?? it.code,
+      detail: `Stok ${it.stock ?? 0} pcs — segera restock`,
+      tone: "text-amber-700 bg-amber-50 border-amber-100",
+    }));
+  }, [summary.lowStock]);
+
+  const quickActions = [
+    {
+      icon: PackagePlus,
+      label: "Catat barang masuk",
+      description: "Terima stok baru atau retur vendor",
+      onClick: () => onNavigate?.("masuk"),
+    },
+    {
+      icon: PackageCheck,
+      label: "Catat barang keluar",
+      description: "Pengiriman, peminjaman, atau mutasi",
+      onClick: () => onNavigate?.("keluar"),
+    },
+    {
+      icon: ClipboardList,
+      label: "Lihat inventory",
+      description: "Cek stok dan detail barang",
+      onClick: () => onNavigate?.("inventory"),
+    },
+  ];
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
         <SidebarNav active="dashboard" onNavigate={onNavigate} />
         <SidebarInset className="flex-1">
-          <DashboardHeader />
+          <DashboardHeader onNavigate={onNavigate} />
           <main id="dashboard" className="px-4 py-6 md:px-6 md:py-8 space-y-6">
             <HeroStrip />
 
@@ -460,6 +452,14 @@ export function DashboardPage({
               id="inventory"
               className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
             >
+              {loading ? (
+                <p className="text-sm text-muted-foreground md:col-span-4">
+                  Memuat data stok...
+                </p>
+              ) : null}
+              {error ? (
+                <p className="text-sm text-red-600 md:col-span-4">{error}</p>
+              ) : null}
               {stats.map((stat) => (
                 <StatCard key={stat.label} {...stat} />
               ))}
@@ -477,7 +477,7 @@ export function DashboardPage({
                         Masuk / Keluar hari ini
                       </h3>
                     </div>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={() => onNavigate?.("riwayat")}>
                       <History className="mr-2 size-4" />
                       Lihat riwayat
                     </Button>
@@ -494,9 +494,11 @@ export function DashboardPage({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {movements.map((movement) => (
-                        <MovementRow key={movement.id} {...movement} />
-                      ))}
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                          Belum ada data pergerakan. Catat barang masuk/keluar untuk melihat histori terbaru.
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
@@ -528,9 +530,15 @@ export function DashboardPage({
                     </Badge>
                   </div>
                   <div className="space-y-2">
-                    {alerts.map((alert) => (
-                      <AlertCard key={alert.id} {...alert} />
-                    ))}
+                    {alerts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Tidak ada peringatan stok.
+                      </p>
+                    ) : (
+                      alerts.map((alert) => (
+                        <AlertCard key={alert.id} {...alert} />
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
