@@ -54,6 +54,7 @@ export class AuthService {
 
   private sanitizeUser(user: User): Omit<User, 'password'> {
     const { password: _pw, ...rest } = user;
+    void _pw;
     return rest;
   }
 

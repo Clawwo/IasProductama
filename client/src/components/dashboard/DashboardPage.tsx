@@ -57,6 +57,7 @@ export type AppNavKey =
   | "inventory"
   | "masuk"
   | "keluar"
+  | "drafts"
   | "riwayat"
   | "pengaturan";
 
@@ -201,6 +202,7 @@ export function SidebarNav({
       icon: ArrowUpRight,
       href: "#keluar",
     },
+    { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
     {
       key: "pengaturan",
