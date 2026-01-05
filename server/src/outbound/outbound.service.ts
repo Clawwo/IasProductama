@@ -6,6 +6,15 @@ import { CreateOutboundDto } from './dto/create-outbound.dto.js';
 export class OutboundService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async findRecent(limit = 20) {
+    const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    return this.prisma.outbound.findMany({
+      take,
+      orderBy: { date: 'desc' },
+      include: { lines: true },
+    });
+  }
+
   async create(dto: CreateOutboundDto) {
     return this.prisma.$transaction(async (tx) => {
       const outbound = await tx.outbound.create({
