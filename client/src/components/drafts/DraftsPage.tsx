@@ -226,14 +226,14 @@ export function DraftsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[120px] px-4">Tipe</TableHead>
+              <TableHead className="w-30 px-4">Tipe</TableHead>
               <TableHead className="px-4">Pihak terkait</TableHead>
               <TableHead className="px-4">Tanggal</TableHead>
               <TableHead className="px-4">Total baris</TableHead>
               <TableHead className="px-4">Total qty</TableHead>
               <TableHead className="px-4">Catatan</TableHead>
               <TableHead className="px-4">Diubah</TableHead>
-              <TableHead className="w-[200px] px-4">Aksi</TableHead>
+              <TableHead className="w-50 px-4">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -278,7 +278,7 @@ export function DraftsPage() {
                     <TableCell className="text-slate-600 px-4 py-3">{meta.date}</TableCell>
                     <TableCell className="text-slate-600 px-4 py-3">{meta.totalItem}</TableCell>
                     <TableCell className="text-slate-600 px-4 py-3">{meta.totalQty}</TableCell>
-                    <TableCell className="text-slate-600 px-4 py-3 truncate max-w-[220px]">
+                    <TableCell className="text-slate-600 px-4 py-3 truncate max-w-55">
                       {meta.note || "-"}
                     </TableCell>
                     <TableCell className="text-slate-600 px-4 py-3">

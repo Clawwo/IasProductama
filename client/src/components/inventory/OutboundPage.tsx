@@ -234,6 +234,7 @@ export function OutboundPage() {
         "Data draft barang keluar telah dimuat ke formulir."
       );
     } catch (err) {
+      console.error("Gagal memuat draft keluar", err);
       pushToast(
         "destructive",
         "Gagal memuat draft",

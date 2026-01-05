@@ -117,7 +117,7 @@ export function SidebarNav({
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
+          <div className="bg-linear-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
             JD
           </div>
           <div className="flex flex-col">
@@ -193,7 +193,7 @@ function StatCard({
       <div
         className={cn(
           "grid size-10 place-items-center rounded-lg",
-          "bg-gradient-to-br",
+          "bg-linear-to-br",
           tone
         )}
       >
@@ -347,9 +347,9 @@ function DashboardHeader({
 
 function HeroStrip() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-md">
+    <div className="relative overflow-hidden rounded-2xl border bg-linear-to-r from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-md">
       <div
-        className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-white/5 to-transparent"
+        className="absolute inset-y-0 right-0 w-1/3 bg-linear-to-l from-white/5 to-transparent"
         aria-hidden
       />
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

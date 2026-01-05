@@ -35,6 +35,7 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .replace(/\/$/, "");
 const INBOUND_URL = `${API_BASE}/api/inbound`;
 const OUTBOUND_URL = `${API_BASE}/api/outbound`;
+const ITEMS_URL = `${API_BASE}/api/items`;
 
 type LineApi = { code: string; qty: number; note?: string; name?: string };
 type InboundApi = {
@@ -62,6 +63,7 @@ type Movement = {
   qty: number;
   actor?: string;
   time: string;
+  rawTime: string;
   timestamp: number;
   note?: string;
 };
@@ -81,6 +83,7 @@ function formatDateTime(value: string) {
 }
 
 export function RiwayatPage() {
+  const [items, setItems] = useState<Array<{ code: string; name?: string }>>([]);
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
   const [loading, setLoading] = useState(false);
@@ -93,6 +96,25 @@ export function RiwayatPage() {
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 20;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadItems = async () => {
+      try {
+        const res = await fetch(ITEMS_URL);
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as Array<{ code: string; name?: string }>;
+        if (!cancelled) setItems(data);
+      } catch (err) {
+        // leave items empty if it fails; riwayat will fallback to code
+        console.warn("Gagal memuat data barang untuk riwayat", err);
+      }
+    };
+    loadItems();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -122,6 +144,7 @@ export function RiwayatPage() {
   }, [loadHistory]);
 
   const movements: Movement[] = useMemo(() => {
+    const nameMap = new Map(items.map((it) => [it.code, it.name]));
     const mapLines = (
       rows: Array<InboundApi | OutboundApi>,
       direction: Movement["direction"],
@@ -133,10 +156,11 @@ export function RiwayatPage() {
           id: `${direction}-${rec.id}-${idx}-${line.code}`,
           direction,
           code: line.code,
-          name: line.name ?? line.code,
+          name: line.name ?? nameMap.get(line.code) ?? line.code,
           qty: line.qty,
           actor: (rec as never)[actorKey] as string | undefined,
           time: formatDateTime(sourceDate),
+          rawTime: sourceDate,
           timestamp: Date.parse(sourceDate) || 0,
           note: line.note ?? rec.note,
         }));
@@ -148,7 +172,7 @@ export function RiwayatPage() {
     ];
 
     return combined.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inbound, outbound]);
+  }, [inbound, outbound, items]);
 
   const stats = useMemo(() => {
     const total = movements.length;
@@ -191,27 +215,24 @@ export function RiwayatPage() {
   const start = (currentPage - 1) * perPage;
   const pageRows = filtered.slice(start, start + perPage);
 
-  const exportCsv = () => {
-    if (filtered.length === 0) return;
-    const header = [
-      "Waktu",
-      "Kode barang",
-      "Nama barang",
-      "Jenis",
-      "Qty",
-      "Vendor",
-      "Catatan",
-    ];
-    const rows = filtered.map((row) => [
-      row.time,
-      row.code,
+  const toDateOnly = (value: string, fallback?: string) => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return fallback ?? "";
+    return d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" });
+  };
+
+  const downloadCsv = (rows: Movement[], filename: string) => {
+    if (rows.length === 0) return;
+    const header = ["Tanggal", "Nama Barang", "Jumlah", "Satuan", "Vendor/PO", "Keterangan"];
+    const csvRows = rows.map((row) => [
+      toDateOnly(row.rawTime, row.time),
       row.name,
-      row.direction,
-      row.direction === "Masuk" ? `+${row.qty}` : `-${row.qty}`,
+      Math.abs(row.qty),
+      "pcs",
       row.actor ?? "",
       row.note ?? "",
     ]);
-    const csv = [header, ...rows]
+    const csv = [header, ...csvRows]
       .map((cols) =>
         cols
           .map((col) => {
@@ -228,9 +249,24 @@ export function RiwayatPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "riwayat-pergerakan.csv";
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportCsv = () => {
+    if (filtered.length === 0) return;
+
+    if (typeFilter === "all") {
+      const inboundRows = filtered.filter((row) => row.direction === "Masuk");
+      const outboundRows = filtered.filter((row) => row.direction === "Keluar");
+      downloadCsv(inboundRows, "riwayat-masuk.csv");
+      downloadCsv(outboundRows, "riwayat-keluar.csv");
+      return;
+    }
+
+    const filename = typeFilter === "Masuk" ? "riwayat-masuk.csv" : "riwayat-keluar.csv";
+    downloadCsv(filtered, filename);
   };
 
   return (
@@ -300,7 +336,7 @@ export function RiwayatPage() {
 
       <div className="rounded-2xl border bg-white shadow-sm">
         <div className="flex flex-wrap gap-3 p-4">
-          <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-lg border px-3">
+          <div className="flex min-w-60 flex-1 items-center gap-2 rounded-lg border px-3">
             <Search className="size-4 text-muted-foreground" />
             <Input
               className="border-0 shadow-none focus-visible:ring-0"
@@ -320,14 +356,14 @@ export function RiwayatPage() {
           </select>
           <Input
             type="date"
-            className="h-10 w-[160px]"
+            className="h-10 w-40"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             placeholder="Dari"
           />
           <Input
             type="date"
-            className="h-10 w-[160px]"
+            className="h-10 w-40"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             placeholder="Sampai"
@@ -336,15 +372,15 @@ export function RiwayatPage() {
         <Separator />
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-slate-100">
               <TableRow>
-                <TableHead>Waktu</TableHead>
-                <TableHead>Kode barang</TableHead>
-                <TableHead>Nama barang</TableHead>
-                <TableHead>Jenis</TableHead>
-                <TableHead>Qty</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Catatan</TableHead>
+                <TableHead className="font-semibold text-slate-800">Waktu</TableHead>
+                <TableHead className="font-semibold text-slate-800">Kode barang</TableHead>
+                <TableHead className="font-semibold text-slate-800">Nama barang</TableHead>
+                <TableHead className="font-semibold text-slate-800">Jenis</TableHead>
+                <TableHead className="font-semibold text-slate-800">Qty</TableHead>
+                <TableHead className="font-semibold text-slate-800">Vendor</TableHead>
+                <TableHead className="font-semibold text-slate-800">Catatan</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -379,7 +415,7 @@ export function RiwayatPage() {
                 pageRows.map((row) => {
                   const isIn = row.direction === "Masuk";
                   return (
-                    <TableRow key={row.id}>
+                    <TableRow key={row.id} className="odd:bg-slate-50">
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {row.time}
                       </TableCell>
