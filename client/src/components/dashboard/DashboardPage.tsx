@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   PackageCheck,
   PackagePlus,
-  Settings,
   ShieldCheck,
   TrendingUp,
   Warehouse,
@@ -58,8 +57,7 @@ export type AppNavKey =
   | "masuk"
   | "keluar"
   | "drafts"
-  | "riwayat"
-  | "pengaturan";
+  | "riwayat";
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
@@ -113,19 +111,13 @@ export function SidebarNav({
     },
     { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
-    {
-      key: "pengaturan",
-      label: "Pengaturan",
-      icon: Settings,
-      href: "#pengaturan",
-    },
   ];
 
   return (
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
-          <div className="bg-gradient-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
+          <div className="bg-linear-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
             JD
           </div>
           <div className="flex flex-col">
@@ -201,7 +193,7 @@ function StatCard({
       <div
         className={cn(
           "grid size-10 place-items-center rounded-lg",
-          "bg-gradient-to-br",
+          "bg-linear-to-br",
           tone
         )}
       >
@@ -355,9 +347,9 @@ function DashboardHeader({
 
 function HeroStrip() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-md">
+    <div className="relative overflow-hidden rounded-2xl border bg-linear-to-r from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-md">
       <div
-        className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-white/5 to-transparent"
+        className="absolute inset-y-0 right-0 w-1/3 bg-linear-to-l from-white/5 to-transparent"
         aria-hidden
       />
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -398,7 +390,12 @@ export function DashboardPage({
 }: {
   onNavigate?: (key: AppNavKey) => void;
 }) {
-  type ItemApi = { code: string; stock: number; name?: string; category?: string };
+  type ItemApi = {
+    code: string;
+    stock: number;
+    name?: string;
+    category?: string;
+  };
   type LineApi = { code: string; qty: number; note?: string; name?: string };
   type InboundApi = {
     id: string;
@@ -446,7 +443,8 @@ export function DashboardPage({
         const data = (await res.json()) as ItemApi[];
         if (!cancelled) setItems(data);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Gagal memuat stok.";
+        const message =
+          err instanceof Error ? err.message : "Gagal memuat stok.";
         if (!cancelled) setStockError(message);
       } finally {
         if (!cancelled) setLoadingStock(false);
@@ -477,7 +475,8 @@ export function DashboardPage({
           setOutbound(outboundData);
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Gagal memuat riwayat.";
+        const message =
+          err instanceof Error ? err.message : "Gagal memuat riwayat.";
         if (!cancelled) setHistoryError(message);
       } finally {
         if (!cancelled) setLoadingHistory(false);
@@ -492,7 +491,9 @@ export function DashboardPage({
   const summary = useMemo(() => {
     const totalSku = items.length;
     const totalStock = items.reduce((sum, it) => sum + (it.stock ?? 0), 0);
-    const lowStock = items.filter((it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5);
+    const lowStock = items.filter(
+      (it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5
+    );
     const emptyStock = items.filter((it) => (it.stock ?? 0) === 0);
     const inboundQty = inbound.reduce(
       (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
@@ -502,7 +503,14 @@ export function DashboardPage({
       (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
       0
     );
-    return { totalSku, totalStock, lowStock, emptyStock, inboundQty, outboundQty };
+    return {
+      totalSku,
+      totalStock,
+      lowStock,
+      emptyStock,
+      inboundQty,
+      outboundQty,
+    };
   }, [items, inbound, outbound]);
 
   const stats = useMemo(
@@ -568,10 +576,11 @@ export function DashboardPage({
         }))
       );
 
-    const combined = [...mapLines(inbound, "Masuk", "vendor"), ...mapLines(outbound, "Keluar", "orderer")];
-    return combined
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 12);
+    const combined = [
+      ...mapLines(inbound, "Masuk", "vendor"),
+      ...mapLines(outbound, "Keluar", "orderer"),
+    ];
+    return combined.sort((a, b) => b.timestamp - a.timestamp).slice(0, 12);
   }, [inbound, outbound]);
 
   const quickActions = [
@@ -614,7 +623,9 @@ export function DashboardPage({
                 </p>
               ) : null}
               {stockError ? (
-                <p className="text-sm text-red-600 md:col-span-4">{stockError}</p>
+                <p className="text-sm text-red-600 md:col-span-4">
+                  {stockError}
+                </p>
               ) : null}
               {stats.map((stat) => (
                 <StatCard key={stat.label} {...stat} />
@@ -633,7 +644,11 @@ export function DashboardPage({
                         Masuk / Keluar hari ini
                       </h3>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => onNavigate?.("riwayat")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onNavigate?.("riwayat")}
+                    >
                       <History className="mr-2 size-4" />
                       Lihat riwayat
                     </Button>
@@ -652,20 +667,30 @@ export function DashboardPage({
                     <TableBody>
                       {loadingHistory ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
+                          <TableCell
+                            colSpan={5}
+                            className="text-center text-sm text-muted-foreground py-6"
+                          >
                             Memuat riwayat...
                           </TableCell>
                         </TableRow>
                       ) : historyError ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-sm text-red-600 py-6">
+                          <TableCell
+                            colSpan={5}
+                            className="text-center text-sm text-red-600 py-6"
+                          >
                             {historyError}
                           </TableCell>
                         </TableRow>
                       ) : movements.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                            Belum ada data pergerakan. Catat barang masuk/keluar untuk melihat histori terbaru.
+                          <TableCell
+                            colSpan={5}
+                            className="text-center text-sm text-muted-foreground py-6"
+                          >
+                            Belum ada data pergerakan. Catat barang masuk/keluar
+                            untuk melihat histori terbaru.
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -713,7 +738,6 @@ export function DashboardPage({
             </section>
 
             <div id="riwayat" className="h-px" aria-hidden />
-            <div id="pengaturan" className="h-px" aria-hidden />
           </main>
         </SidebarInset>
       </div>

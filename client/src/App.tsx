@@ -11,6 +11,7 @@ import {
   type AppNavKey,
 } from "./components/dashboard/DashboardPage";
 import { DraftsPage } from "./components/drafts/DraftsPage";
+import { RiwayatPage } from "./components/history/RiwayatPage";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -29,7 +30,13 @@ import { ensureSession, fetchMe, login, logout, type User } from "./lib/auth";
 import { LogOut } from "lucide-react";
 import { queryClient } from "./lib/react-query";
 
-type View = "dashboard" | "inventory" | "masuk" | "keluar" | "drafts";
+type View =
+  | "dashboard"
+  | "inventory"
+  | "masuk"
+  | "keluar"
+  | "drafts"
+  | "riwayat";
 
 function Shell({
   title,
@@ -98,6 +105,8 @@ function App() {
       ? "keluar"
       : window.location.hash === "#drafts"
       ? "drafts"
+      : window.location.hash === "#riwayat"
+      ? "riwayat"
       : "dashboard"
   );
 
@@ -123,6 +132,8 @@ function App() {
         setView("keluar");
       } else if (window.location.hash === "#drafts") {
         setView("drafts");
+      } else if (window.location.hash === "#riwayat") {
+        setView("riwayat");
       } else {
         setView("dashboard");
       }
@@ -176,8 +187,7 @@ function App() {
       masuk: "masuk",
       keluar: "keluar",
       drafts: "drafts",
-      riwayat: "dashboard",
-      pengaturan: "dashboard",
+      riwayat: "riwayat",
     };
     const next = map[key] ?? "dashboard";
     setView(next);
@@ -301,6 +311,21 @@ function App() {
         logoutLoading={logoutMutation.isPending}
       >
         <DraftsPage />
+      </Shell>
+    );
+  }
+
+  if (view === "riwayat") {
+    return (
+      <Shell
+        title="Riwayat"
+        view={view}
+        userEmail={user?.email}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        <RiwayatPage />
       </Shell>
     );
   }
