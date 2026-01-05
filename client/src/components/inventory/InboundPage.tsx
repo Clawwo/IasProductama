@@ -54,9 +54,7 @@ const INBOUND_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/inbound`;
 const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
-const DRAFTS_URL = `${
-  API_BASE ? API_BASE.replace(/\/$/, "") : ""
-}/api/drafts`;
+const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -187,10 +185,19 @@ export function InboundPage() {
         vendor?: unknown;
         date?: unknown;
         note?: unknown;
-        lines?: Array<{ code?: unknown; name?: unknown; qty?: unknown; note?: unknown }>;
+        lines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+        }>;
       };
       setVendor(typeof payload.vendor === "string" ? payload.vendor : "");
-      setDate(typeof payload.date === "string" && payload.date ? payload.date.slice(0, 10) : date);
+      setDate(
+        typeof payload.date === "string" && payload.date
+          ? payload.date.slice(0, 10)
+          : date
+      );
       setNote(typeof payload.note === "string" ? payload.note : "");
       const incomingLines = Array.isArray(payload.lines)
         ? payload.lines.map((l) => ({
@@ -207,9 +214,17 @@ export function InboundPage() {
       setFormError("");
       setDraftStatus("Draft dimuat");
       setDraftId(typeof parsed.id === "string" ? parsed.id : null);
-      pushToast("default", "Draft dimuat", "Data draft barang masuk telah dimuat ke formulir.");
+      pushToast(
+        "default",
+        "Draft dimuat",
+        "Data draft barang masuk telah dimuat ke formulir."
+      );
     } catch {
-      pushToast("destructive", "Gagal memuat draft", "Draft tidak bisa dibaca.");
+      pushToast(
+        "destructive",
+        "Gagal memuat draft",
+        "Draft tidak bisa dibaca."
+      );
     } finally {
       sessionStorage.removeItem("draft:pending-load");
     }

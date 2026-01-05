@@ -68,7 +68,9 @@ function Shell({
               </BreadcrumbList>
             </Breadcrumb>
             <div className="ml-auto flex items-center gap-3 text-sm text-slate-700">
-              {userEmail ? <span className="hidden sm:inline">{userEmail}</span> : null}
+              {userEmail ? (
+                <span className="hidden sm:inline">{userEmail}</span>
+              ) : null}
               <button
                 className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-70"
                 onClick={onLogout}
@@ -87,7 +89,6 @@ function Shell({
 }
 
 function App() {
-
   const [view, setView] = useState<View>(() =>
     window.location.hash === "#inventory"
       ? "inventory"
