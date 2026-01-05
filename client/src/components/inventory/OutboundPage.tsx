@@ -20,11 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,9 +47,14 @@ import {
 import { inventoryItemsWithKind } from "./items";
 
 type Env = { VITE_API_BASE?: string };
-const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
-const OUTBOUND_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/outbound`;
+const API_BASE = (
+  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? ""
+).trim();
+const OUTBOUND_URL = `${
+  API_BASE ? API_BASE.replace(/\/$/, "") : ""
+}/api/outbound`;
 const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
+const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -149,6 +150,9 @@ export function OutboundPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Belum disimpan");
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -180,6 +184,65 @@ export function OutboundPage() {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("draft:pending-load");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        id?: string;
+        type?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (parsed.type !== "OUTBOUND" || !parsed.payload) return;
+      const payload = parsed.payload as {
+        orderer?: unknown;
+        date?: unknown;
+        note?: unknown;
+        lines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+        }>;
+      };
+      setOrderer(typeof payload.orderer === "string" ? payload.orderer : "");
+      setDate(
+        typeof payload.date === "string" && payload.date
+          ? payload.date.slice(0, 10)
+          : date
+      );
+      setNote(typeof payload.note === "string" ? payload.note : "");
+      const incomingLines = Array.isArray(payload.lines)
+        ? payload.lines.map((l) => ({
+            id: crypto.randomUUID(),
+            code: typeof l.code === "string" ? l.code : "",
+            name: typeof l.name === "string" ? l.name : "",
+            qty: typeof l.qty === "number" ? l.qty : Number(l.qty) || 1,
+            note: typeof l.note === "string" ? l.note : undefined,
+          }))
+        : [];
+      if (incomingLines.length > 0) {
+        setLines(incomingLines.filter((l) => l.code));
+      }
+      setFormError("");
+      setDraftStatus("Draft dimuat");
+      setDraftId(typeof parsed.id === "string" ? parsed.id : null);
+      pushToast(
+        "default",
+        "Draft dimuat",
+        "Data draft barang keluar telah dimuat ke formulir."
+      );
+    } catch (err) {
+      pushToast(
+        "destructive",
+        "Gagal memuat draft",
+        "Draft tidak bisa dibaca."
+      );
+    } finally {
+      sessionStorage.removeItem("draft:pending-load");
+    }
+  }, [date]);
 
   const mergedItems = useMemo(() => {
     const stockMap = new Map(remoteItems.map((it) => [it.code, it.stock]));
@@ -596,7 +659,11 @@ export function OutboundPage() {
     setLineItem({ code: "", name: "", qty: 1, note: "" });
     setSearchTerm("");
     setFormError("");
-    pushToast("default", "Baris ditambahkan", `${lineItem.code} - ${lineItem.name}`);
+    pushToast(
+      "default",
+      "Baris ditambahkan",
+      `${lineItem.code} - ${lineItem.name}`
+    );
   }
 
   function removeLine(id: string) {
@@ -604,6 +671,56 @@ export function OutboundPage() {
     setLines((prev) => prev.filter((l) => l.id !== id));
     if (target) {
       pushToast("default", "Baris dihapus", `${target.code} - ${target.name}`);
+    }
+  }
+
+  async function handleSaveDraft() {
+    const payload = {
+      orderer: orderer.trim(),
+      date,
+      note: note.trim() || undefined,
+      lines: lines.map((l) => {
+        const meta = mergedItems.find((it) => it.code === l.code);
+        return {
+          code: l.code,
+          name: l.name,
+          category: meta?.category,
+          subCategory: meta?.subCategory,
+          kind: meta?.kind,
+          qty: l.qty,
+          note: l.note,
+        };
+      }),
+    };
+
+    try {
+      setDraftSaving(true);
+      const isUpdate = Boolean(draftId);
+      const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
+      const method = isUpdate ? "PUT" : "POST";
+      const res = await fetch(targetUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "OUTBOUND", payload }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Gagal menyimpan draft");
+      }
+      const data = (await res.json()) as { id?: string };
+      if (data?.id) setDraftId(data.id);
+      setDraftStatus("Draft tersimpan");
+      pushToast(
+        "default",
+        "Draft tersimpan",
+        "Draft barang keluar berhasil disimpan."
+      );
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menyimpan draft.";
+      pushToast("destructive", "Gagal simpan draft", message);
+    } finally {
+      setDraftSaving(false);
     }
   }
 
@@ -654,7 +771,11 @@ export function OutboundPage() {
       }
       setSubmitStatus("success");
       setSubmitMessage("Berhasil disimpan.");
-      pushToast("default", "Barang keluar disimpan", "Data pengeluaran berhasil dicatat.");
+      pushToast(
+        "default",
+        "Barang keluar disimpan",
+        "Data pengeluaran berhasil dicatat."
+      );
       fetchItems();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Gagal menyimpan.";
@@ -678,7 +799,8 @@ export function OutboundPage() {
                 Barang Keluar
               </h1>
               <p className="text-sm text-slate-600">
-                Catat pengeluaran stok untuk pengiriman, peminjaman, atau permintaan lainnya.
+                Catat pengeluaran stok untuk pengiriman, peminjaman, atau
+                permintaan lainnya.
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -688,11 +810,16 @@ export function OutboundPage() {
               <Button
                 variant="outline"
                 className="border-dashed"
-                disabled={submitStatus === "loading"}
+                disabled={submitStatus === "loading" || draftSaving}
+                onClick={handleSaveDraft}
               >
-                <Save className="mr-2 size-4" /> Simpan draft
+                <Save className="mr-2 size-4" />
+                {draftSaving ? "Menyimpan..." : "Simpan draft"}
               </Button>
-              <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
+              <AlertDialog
+                open={confirmSubmitOpen}
+                onOpenChange={setConfirmSubmitOpen}
+              >
                 <AlertDialogTrigger asChild>
                   <Button disabled={submitStatus === "loading"}>
                     <CheckCircle className="mr-2 size-4" /> Tandai selesai
@@ -727,8 +854,8 @@ export function OutboundPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               label="Status Draft"
-              value="Aktif"
-              sub="Belum diposting"
+              value={draftStatus}
+              sub="Simpan draft tanpa mengurangi stok"
             />
             <SummaryCard
               label="Total item"
@@ -833,7 +960,7 @@ export function OutboundPage() {
                 <Button variant="outline" className="justify-between">
                   <span className="truncate text-left">
                     {lineItem.name
-                      ? `${lineItem.code} — ${lineItem.name}`
+                      ? `${lineItem.code} ΓÇö ${lineItem.name}`
                       : "Pilih / cari barang"}
                   </span>
                   <div className="flex items-center gap-2">
@@ -1015,7 +1142,7 @@ export function OutboundPage() {
                         <AlertDialogHeader>
                           <AlertDialogTitle>Hapus baris ini?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            {line.code} — {line.name}
+                            {line.code} ΓÇö {line.name}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -1067,7 +1194,9 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>
-          {toast.message ? <AlertDescription>{toast.message}</AlertDescription> : null}
+          {toast.message ? (
+            <AlertDescription>{toast.message}</AlertDescription>
+          ) : null}
         </Alert>
       ))}
     </div>

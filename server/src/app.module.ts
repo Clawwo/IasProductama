@@ -7,6 +7,7 @@ import { InboundModule } from './inbound/inbound.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ItemsModule } from './items/items.module.js';
 import { OutboundModule } from './outbound/outbound.module.js';
+import { DraftsModule } from './drafts/drafts.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { OutboundModule } from './outbound/outbound.module.js';
     OutboundModule,
     AuthModule,
     ItemsModule,
+    DraftsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

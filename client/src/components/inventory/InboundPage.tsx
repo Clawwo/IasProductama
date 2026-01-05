@@ -40,6 +40,7 @@ import {
   CheckCircle,
   Trash2,
   Calendar,
+  Truck,
   StickyNote,
   Search,
 } from "lucide-react";
@@ -53,6 +54,7 @@ const INBOUND_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/inbound`;
 const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
+const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -109,6 +111,7 @@ type Toast = {
 };
 
 export function InboundPage() {
+  const [vendor, setVendor] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [lineItem, setLineItem] = useState({
@@ -133,6 +136,9 @@ export function InboundPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Belum disimpan");
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -164,6 +170,65 @@ export function InboundPage() {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("draft:pending-load");
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as {
+        id?: string;
+        type?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (parsed.type !== "INBOUND" || !parsed.payload) return;
+      const payload = parsed.payload as {
+        vendor?: unknown;
+        date?: unknown;
+        note?: unknown;
+        lines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+        }>;
+      };
+      setVendor(typeof payload.vendor === "string" ? payload.vendor : "");
+      setDate(
+        typeof payload.date === "string" && payload.date
+          ? payload.date.slice(0, 10)
+          : date
+      );
+      setNote(typeof payload.note === "string" ? payload.note : "");
+      const incomingLines = Array.isArray(payload.lines)
+        ? payload.lines.map((l) => ({
+            id: crypto.randomUUID(),
+            code: typeof l.code === "string" ? l.code : "",
+            name: typeof l.name === "string" ? l.name : "",
+            qty: typeof l.qty === "number" ? l.qty : Number(l.qty) || 1,
+            note: typeof l.note === "string" ? l.note : undefined,
+          }))
+        : [];
+      if (incomingLines.length > 0) {
+        setLines(incomingLines.filter((l) => l.code));
+      }
+      setFormError("");
+      setDraftStatus("Draft dimuat");
+      setDraftId(typeof parsed.id === "string" ? parsed.id : null);
+      pushToast(
+        "default",
+        "Draft dimuat",
+        "Data draft barang masuk telah dimuat ke formulir."
+      );
+    } catch {
+      pushToast(
+        "destructive",
+        "Gagal memuat draft",
+        "Draft tidak bisa dibaca."
+      );
+    } finally {
+      sessionStorage.removeItem("draft:pending-load");
+    }
+  }, [date]);
 
   const mergedItems = useMemo(() => {
     const stockMap = new Map(remoteItems.map((it) => [it.code, it.stock]));
@@ -545,7 +610,61 @@ export function InboundPage() {
     }
   }
 
+  async function handleSaveDraft() {
+    const payload = {
+      vendor: vendor.trim(),
+      date,
+      note: note.trim() || undefined,
+      lines: lines.map((l) => {
+        const meta = mergedItems.find((it) => it.code === l.code);
+        return {
+          code: l.code,
+          name: l.name,
+          category: meta?.category,
+          subCategory: meta?.subCategory,
+          kind: meta?.kind,
+          qty: l.qty,
+          note: l.note,
+        };
+      }),
+    };
+
+    try {
+      setDraftSaving(true);
+      const isUpdate = Boolean(draftId);
+      const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
+      const method = isUpdate ? "PUT" : "POST";
+      const res = await fetch(targetUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "INBOUND", payload }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Gagal menyimpan draft");
+      }
+      const data = (await res.json()) as { id?: string };
+      if (data?.id) setDraftId(data.id);
+      setDraftStatus("Draft tersimpan");
+      pushToast(
+        "default",
+        "Draft tersimpan",
+        "Draft barang masuk berhasil disimpan."
+      );
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menyimpan draft.";
+      pushToast("destructive", "Gagal simpan draft", message);
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
   async function handleComplete() {
+    if (!vendor.trim()) {
+      setFormError("Pemasok/pengirim wajib diisi.");
+      return;
+    }
     if (!date) {
       setFormError("Tanggal tidak boleh kosong.");
       return;
@@ -556,6 +675,7 @@ export function InboundPage() {
     }
 
     const payload = {
+      vendor: vendor.trim(),
       date,
       note: note.trim() || undefined,
       lines: lines.map((l) => {
@@ -626,9 +746,11 @@ export function InboundPage() {
               <Button
                 variant="outline"
                 className="border-dashed cursor-pointer"
-                disabled={submitStatus === "loading"}
+                disabled={submitStatus === "loading" || draftSaving}
+                onClick={handleSaveDraft}
               >
-                <Save className="size-4" /> Simpan draft
+                <Save className="size-4" />
+                {draftSaving ? "Menyimpan..." : "Simpan draft"}
               </Button>
               <AlertDialog
                 open={confirmSubmitOpen}
@@ -671,8 +793,8 @@ export function InboundPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryCard
               label="Status Draft"
-              value="Aktif"
-              sub="Belum diposting"
+              value={draftStatus}
+              sub="Simpan draft tanpa mengubah stok"
             />
             <SummaryCard
               label="Total item"
@@ -702,6 +824,16 @@ export function InboundPage() {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+              />
+            </LabeledInput>
+            <LabeledInput
+              label="Pemasok / pengirim"
+              icon={<Truck className="size-4" />}
+            >
+              <Input
+                placeholder="Nama vendor"
+                value={vendor}
+                onChange={(e) => setVendor(e.target.value)}
               />
             </LabeledInput>
             <LabeledInput

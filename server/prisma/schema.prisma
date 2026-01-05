@@ -18,6 +18,11 @@ enum Role {
   SUPERADMIN
 }
 
+enum DraftType {
+  INBOUND
+  OUTBOUND
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -97,4 +102,12 @@ model Item {
   stock       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model Draft {
+  id        String     @id @default(uuid())
+  type      DraftType
+  payload   Json
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
