@@ -1,6 +1,6 @@
-import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
-import { inventoryItems } from "../../client/src/components/inventory/items.ts";
+import 'dotenv/config';
+import { PrismaClient } from '@prisma/client';
+import { inventoryItems } from '../../client/src/components/inventory/items.ts';
 
 const prisma = new PrismaClient();
 
@@ -24,7 +24,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error("Failed to import items", err);
+    console.error('Failed to import items', err);
     process.exit(1);
   })
   .finally(async () => {

@@ -7,11 +7,24 @@ import { InboundPage } from "./components/inventory/InboundPage";
 import { OutboundPage } from "./components/inventory/OutboundPage";
 import {
   DashboardPage,
-  SidebarNav,
   type AppNavKey,
 } from "./components/dashboard/DashboardPage";
 import { DraftsPage } from "./components/drafts/DraftsPage";
 import { RiwayatPage } from "./components/history/RiwayatPage";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarSeparator,
+} from "@/components/ui/sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,6 +41,14 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ensureSession, fetchMe, login, logout, type User } from "./lib/auth";
 import { LogOut } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ClipboardList,
+  History,
+  LayoutDashboard,
+  Box,
+} from "lucide-react";
 import { queryClient } from "./lib/react-query";
 
 type View =
@@ -37,6 +58,85 @@ type View =
   | "keluar"
   | "drafts"
   | "riwayat";
+
+function SidebarNav({
+  active = "dashboard",
+  onNavigate,
+}: {
+  active?: AppNavKey;
+  onNavigate?: (key: AppNavKey) => void;
+}) {
+  const items: Array<{
+    key: AppNavKey;
+    label: string;
+    icon: typeof LayoutDashboard;
+    href: string;
+  }> = [
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, href: "#dashboard" },
+    { key: "inventory", label: "Inventory", icon: Box, href: "#inventory" },
+    { key: "masuk", label: "Barang Masuk", icon: ArrowDownLeft, href: "#masuk" },
+    { key: "keluar", label: "Barang Keluar", icon: ArrowUpRight, href: "#keluar" },
+    { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
+    { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
+  ];
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
+          <div className="bg-linear-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
+            JD
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold leading-tight">Jogja Drumband</span>
+            <span className="text-xs text-muted-foreground leading-tight">Warehouse Control</span>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Menu utama</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map((item) => (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton
+                    isActive={active === item.key}
+                    asChild
+                    onClick={(e) => {
+                      if (onNavigate) {
+                        e.preventDefault();
+                        onNavigate(item.key);
+                      }
+                    }}
+                  >
+                    <a href={item.href} className="flex items-center gap-2">
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarSeparator />
+      <SidebarFooter>
+        <div className="bg-muted/60 text-xs text-muted-foreground rounded-md border px-2 py-2">
+          <div className="flex items-center gap-2 text-foreground">
+            <History className="size-4" />
+            Mode pantau stok
+          </div>
+          <p className="mt-1 leading-relaxed">
+            Pantau pergerakan harian dan simpan pencatatan masuk-keluar.
+          </p>
+        </div>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
 
 function Shell({
   title,

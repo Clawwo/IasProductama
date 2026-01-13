@@ -49,6 +49,7 @@ import {
   PackageSearch,
   PencilLine,
   Plus,
+  Download,
   Search,
   Trash2,
 } from "lucide-react";
@@ -343,6 +344,38 @@ export function InventoryPage() {
     setPendingDelete(null);
   }
 
+  const exportInventory = () => {
+    if (filtered.length === 0) return;
+    const header = ["Kode barang", "Nama barang", "Kategori", "Stok", "Status"];
+    const rows = filtered.map((item) => [
+      item.code,
+      item.name,
+      item.category,
+      item.stock,
+      getStatus(item.stock),
+    ]);
+    const csv = [header, ...rows]
+      .map((cols) =>
+        cols
+          .map((col) => {
+            const value = String(col ?? "");
+            return value.includes(",") || value.includes("\n")
+              ? `"${value.replace(/"/g, '""')}"`
+              : value;
+          })
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "inventory-export.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   function onCloseForm() {
     setShowForm(false);
   }
@@ -360,6 +393,15 @@ export function InventoryPage() {
               Daftar Barang
             </h1>
             <div className="ml-auto flex flex-wrap gap-2 text-sm font-semibold text-slate-600">
+              <Button
+                variant="outline"
+                className="border-slate-200 text-slate-700 hover:bg-slate-50"
+                onClick={exportInventory}
+                disabled={loading || filtered.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export Excel
+              </Button>
               <Button
                 className="bg-sky-600 text-white hover:bg-sky-700"
                 onClick={openAddForm}

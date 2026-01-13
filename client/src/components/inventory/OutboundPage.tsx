@@ -770,12 +770,18 @@ export function OutboundPage() {
         const text = await res.text();
         throw new Error(text || "Gagal menyimpan");
       }
+      const data = (await res.json()) as { code?: string };
+      const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
       setSubmitStatus("success");
-      setSubmitMessage("Berhasil disimpan.");
+      setSubmitMessage(
+        codeMessage ? `Berhasil disimpan. ${codeMessage}` : "Berhasil disimpan."
+      );
       pushToast(
         "default",
         "Barang keluar disimpan",
-        "Data pengeluaran berhasil dicatat."
+        codeMessage
+          ? `Data pengeluaran dicatat. ${codeMessage}`
+          : "Data pengeluaran berhasil dicatat."
       );
       fetchItems();
     } catch (err: unknown) {
