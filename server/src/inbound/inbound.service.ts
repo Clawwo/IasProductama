@@ -20,7 +20,8 @@ export class InboundService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findRecent(limit = 20) {
-    const take = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const take =
+      Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     return this.prisma.inbound.findMany({
       take,
       orderBy: { date: 'desc' },

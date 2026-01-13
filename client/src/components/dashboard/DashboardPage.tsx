@@ -496,7 +496,10 @@ export function DashboardPage({
     <div className="space-y-6">
       <HeroStrip onNavigate={onNavigate} />
 
-      <section id="inventory" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section
+        id="inventory"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-4"
+      >
         {loadingStock ? (
           <p className="text-sm text-muted-foreground md:col-span-4">
             Memuat data stok...
@@ -517,12 +520,18 @@ export function DashboardPage({
           <div className="bg-white border rounded-2xl shadow-sm">
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-sm text-muted-foreground">Pergerakan terbaru</p>
+                <p className="text-sm text-muted-foreground">
+                  Pergerakan terbaru
+                </p>
                 <h3 className="text-lg font-semibold leading-tight">
                   Masuk / Keluar hari ini
                 </h3>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => onNavigate?.("riwayat")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate?.("riwayat")}
+              >
                 <History className="mr-2 size-4" />
                 Lihat riwayat
               </Button>
@@ -541,24 +550,36 @@ export function DashboardPage({
               <TableBody>
                 {loadingHistory ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-sm text-muted-foreground py-6"
+                    >
                       Memuat riwayat...
                     </TableCell>
                   </TableRow>
                 ) : historyError ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-red-600 py-6">
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-sm text-red-600 py-6"
+                    >
                       {historyError}
                     </TableCell>
                   </TableRow>
                 ) : movements.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                      Belum ada data pergerakan. Catat barang masuk/keluar untuk melihat histori terbaru.
+                    <TableCell
+                      colSpan={5}
+                      className="text-center text-sm text-muted-foreground py-6"
+                    >
+                      Belum ada data pergerakan. Catat barang masuk/keluar untuk
+                      melihat histori terbaru.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  movements.map((movement) => <MovementRow key={movement.id} {...movement} />)
+                  movements.map((movement) => (
+                    <MovementRow key={movement.id} {...movement} />
+                  ))
                 )}
               </TableBody>
             </Table>

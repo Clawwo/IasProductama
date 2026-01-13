@@ -95,7 +95,9 @@ function formatDateTime(value: string) {
 }
 
 export function RiwayatPage() {
-  const [items, setItems] = useState<Array<{ code: string; name?: string }>>([]);
+  const [items, setItems] = useState<Array<{ code: string; name?: string }>>(
+    []
+  );
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
   const [loading, setLoading] = useState(false);
@@ -108,17 +110,14 @@ export function RiwayatPage() {
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailData, setDetailData] = useState<
-    | {
-        txCode: string;
-        direction: Movement["direction"];
-        actor?: string;
-        date: string;
-        note?: string;
-        lines: Array<{ code: string; name?: string; qty: number; note?: string }>;
-      }
-    | null
-  >(null);
+  const [detailData, setDetailData] = useState<{
+    txCode: string;
+    direction: Movement["direction"];
+    actor?: string;
+    date: string;
+    note?: string;
+    lines: Array<{ code: string; name?: string; qty: number; note?: string }>;
+  } | null>(null);
   const perPage = 20;
 
   useEffect(() => {
@@ -127,7 +126,10 @@ export function RiwayatPage() {
       try {
         const res = await fetch(ITEMS_URL);
         if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as Array<{ code: string; name?: string }>;
+        const data = (await res.json()) as Array<{
+          code: string;
+          name?: string;
+        }>;
         if (!cancelled) setItems(data);
       } catch (err) {
         // leave items empty if it fails; riwayat will fallback to code
@@ -293,10 +295,16 @@ export function RiwayatPage() {
 
   const openDetail = (row: Movement) => {
     if (row.direction === "Masuk") {
-      const match = inbound.find((rec) => rec.code === row.txCode) ??
+      const match =
+        inbound.find((rec) => rec.code === row.txCode) ??
         inbound.find((rec) => rec.id === row.recordId);
       const lines = match?.lines ?? [
-        { code: row.itemCode, name: row.name, qty: Math.abs(row.qty), note: row.note },
+        {
+          code: row.itemCode,
+          name: row.name,
+          qty: Math.abs(row.qty),
+          note: row.note,
+        },
       ];
       setDetailData({
         txCode: match?.code ?? row.txCode,
@@ -310,10 +318,16 @@ export function RiwayatPage() {
       return;
     }
 
-    const match = outbound.find((rec) => rec.code === row.txCode) ??
+    const match =
+      outbound.find((rec) => rec.code === row.txCode) ??
       outbound.find((rec) => rec.id === row.recordId);
     const lines = match?.lines ?? [
-      { code: row.itemCode, name: row.name, qty: Math.abs(row.qty), note: row.note },
+      {
+        code: row.itemCode,
+        name: row.name,
+        qty: Math.abs(row.qty),
+        note: row.note,
+      },
     ];
     setDetailData({
       txCode: match?.code ?? row.txCode,
@@ -337,7 +351,8 @@ export function RiwayatPage() {
       return;
     }
 
-    const filename = typeFilter === "Masuk" ? "riwayat-masuk.csv" : "riwayat-keluar.csv";
+    const filename =
+      typeFilter === "Masuk" ? "riwayat-masuk.csv" : "riwayat-keluar.csv";
     downloadCsv(filtered, filename);
   };
 
@@ -446,15 +461,33 @@ export function RiwayatPage() {
           <Table>
             <TableHeader className="bg-slate-100">
               <TableRow>
-                <TableHead className="font-semibold text-slate-800">Waktu</TableHead>
-                <TableHead className="font-semibold text-slate-800">Kode transaksi</TableHead>
-                <TableHead className="font-semibold text-slate-800">Kode barang</TableHead>
-                <TableHead className="font-semibold text-slate-800">Nama barang</TableHead>
-                <TableHead className="font-semibold text-slate-800">Jenis</TableHead>
-                <TableHead className="font-semibold text-slate-800">Qty</TableHead>
-                <TableHead className="font-semibold text-slate-800">Vendor</TableHead>
-                <TableHead className="font-semibold text-slate-800">Catatan</TableHead>
-                <TableHead className="font-semibold text-slate-800 text-center">Detail</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Waktu
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Kode transaksi
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Kode barang
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Nama barang
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Jenis
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Qty
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Vendor
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Catatan
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800 text-center">
+                  Detail
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -623,19 +656,30 @@ export function RiwayatPage() {
                 <p className="font-medium">{detailData.note ?? "-"}</p>
               </div>
               <div className="rounded-lg border">
-                <div className="border-b px-4 py-3 font-semibold">Detail barang</div>
+                <div className="border-b px-4 py-3 font-semibold">
+                  Detail barang
+                </div>
                 <div className="max-h-80 overflow-y-auto divide-y">
                   {detailData.lines.map((line, idx) => (
-                    <div key={`${line.code}-${idx}`} className="px-4 py-3 text-sm">
+                    <div
+                      key={`${line.code}-${idx}`}
+                      className="px-4 py-3 text-sm"
+                    >
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-semibold">{line.name ?? line.code}</p>
-                          <p className="text-xs text-muted-foreground">{line.code}</p>
+                          <p className="font-semibold">
+                            {line.name ?? line.code}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {line.code}
+                          </p>
                         </div>
                         <span className="font-semibold">{line.qty} pcs</span>
                       </div>
                       {line.note ? (
-                        <p className="mt-1 text-xs text-muted-foreground">{line.note}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {line.note}
+                        </p>
                       ) : null}
                     </div>
                   ))}

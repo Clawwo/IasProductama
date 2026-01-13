@@ -63,17 +63,11 @@ export function SummaryChart({ data }: { data: ChartPoint[] }) {
           const inboundPct =
             point.inbound === 0
               ? 0
-              : Math.min(
-                  Math.max((point.inbound / maxValue) * 100, 12),
-                  100
-                );
+              : Math.min(Math.max((point.inbound / maxValue) * 100, 12), 100);
           const outboundPct =
             point.outbound === 0
               ? 0
-              : Math.min(
-                  Math.max((point.outbound / maxValue) * 100, 12),
-                  100
-                );
+              : Math.min(Math.max((point.outbound / maxValue) * 100, 12), 100);
 
           return (
             <div key={point.label} className="flex flex-col items-center gap-2">
@@ -90,7 +84,9 @@ export function SummaryChart({ data }: { data: ChartPoint[] }) {
                 />
               </div>
               <div className="text-center">
-                <p className="text-xs font-semibold leading-tight">{point.label}</p>
+                <p className="text-xs font-semibold leading-tight">
+                  {point.label}
+                </p>
                 <p className="text-[11px] text-muted-foreground leading-tight">
                   {point.inbound} / {point.outbound}
                 </p>

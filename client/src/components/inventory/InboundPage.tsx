@@ -714,7 +714,9 @@ export function InboundPage() {
       pushToast(
         "default",
         "Barang masuk disimpan",
-        codeMessage ? `Data penerimaan dicatat. ${codeMessage}` : "Data penerimaan berhasil dicatat."
+        codeMessage
+          ? `Data penerimaan dicatat. ${codeMessage}`
+          : "Data penerimaan berhasil dicatat."
       );
       fetchItems();
     } catch (err: unknown) {
