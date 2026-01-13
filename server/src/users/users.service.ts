@@ -31,7 +31,12 @@ export class UsersService {
       where: { role: Role.ADMIN },
     });
     if (!admin) {
-      await this.prisma.user.create({ data: defaultAdmin });
+      await this.prisma.user.create({
+        data: {
+          ...defaultAdmin,
+          role: defaultAdmin.role ?? Role.ADMIN,
+        },
+      });
     }
   }
 }

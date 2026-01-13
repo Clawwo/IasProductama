@@ -6,6 +6,7 @@
     "dist",
     "generated",
     "_archive",
+    "scripts",
     "**/*spec.ts"
   ]
 }

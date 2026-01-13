@@ -24,9 +24,17 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Download,
+  Eye,
   RefreshCw,
   Search,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -40,6 +48,7 @@ const ITEMS_URL = `${API_BASE}/api/items`;
 type LineApi = { code: string; qty: number; note?: string; name?: string };
 type InboundApi = {
   id: string;
+  code?: string;
   vendor?: string;
   date: string;
   note?: string;
@@ -48,6 +57,7 @@ type InboundApi = {
 };
 type OutboundApi = {
   id: string;
+  code?: string;
   orderer?: string;
   date: string;
   note?: string;
@@ -58,7 +68,9 @@ type OutboundApi = {
 type Movement = {
   id: string;
   direction: "Masuk" | "Keluar";
-  code: string;
+  txCode: string;
+  recordId: string;
+  itemCode: string;
   name: string;
   qty: number;
   actor?: string;
@@ -95,6 +107,18 @@ export function RiwayatPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailData, setDetailData] = useState<
+    | {
+        txCode: string;
+        direction: Movement["direction"];
+        actor?: string;
+        date: string;
+        note?: string;
+        lines: Array<{ code: string; name?: string; qty: number; note?: string }>;
+      }
+    | null
+  >(null);
   const perPage = 20;
 
   useEffect(() => {
@@ -155,7 +179,9 @@ export function RiwayatPage() {
         return rec.lines.map((line, idx) => ({
           id: `${direction}-${rec.id}-${idx}-${line.code}`,
           direction,
-          code: line.code,
+          txCode: rec.code ?? "-",
+          recordId: rec.id,
+          itemCode: line.code,
           name: line.name ?? nameMap.get(line.code) ?? line.code,
           qty: line.qty,
           actor: (rec as never)[actorKey] as string | undefined,
@@ -199,9 +225,9 @@ export function RiwayatPage() {
       if (fromTs && row.timestamp < fromTs) return false;
       if (toTs && row.timestamp > toTs) return false;
       if (!term) return true;
-      const haystack = `${row.code} ${row.name} ${row.actor ?? ""} ${
-        row.note ?? ""
-      }`.toLowerCase();
+      const haystack = `${row.txCode} ${row.itemCode} ${row.name} ${
+        row.actor ?? ""
+      } ${row.note ?? ""}`.toLowerCase();
       return haystack.includes(term);
     });
   }, [movements, typeFilter, search, fromDate, toDate]);
@@ -223,9 +249,20 @@ export function RiwayatPage() {
 
   const downloadCsv = (rows: Movement[], filename: string) => {
     if (rows.length === 0) return;
-    const header = ["Tanggal", "Nama Barang", "Jumlah", "Satuan", "Vendor/PO", "Keterangan"];
+    const header = [
+      "Kode Transaksi",
+      "Tanggal",
+      "Kode Barang",
+      "Nama Barang",
+      "Jumlah",
+      "Satuan",
+      "Vendor/PO",
+      "Keterangan",
+    ];
     const csvRows = rows.map((row) => [
+      row.txCode,
       toDateOnly(row.rawTime, row.time),
+      row.itemCode,
       row.name,
       Math.abs(row.qty),
       "pcs",
@@ -252,6 +289,41 @@ export function RiwayatPage() {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const openDetail = (row: Movement) => {
+    if (row.direction === "Masuk") {
+      const match = inbound.find((rec) => rec.code === row.txCode) ??
+        inbound.find((rec) => rec.id === row.recordId);
+      const lines = match?.lines ?? [
+        { code: row.itemCode, name: row.name, qty: Math.abs(row.qty), note: row.note },
+      ];
+      setDetailData({
+        txCode: match?.code ?? row.txCode,
+        direction: row.direction,
+        actor: match?.vendor,
+        date: formatDateTime(match?.date ?? row.rawTime),
+        note: match?.note ?? row.note,
+        lines,
+      });
+      setDetailOpen(true);
+      return;
+    }
+
+    const match = outbound.find((rec) => rec.code === row.txCode) ??
+      outbound.find((rec) => rec.id === row.recordId);
+    const lines = match?.lines ?? [
+      { code: row.itemCode, name: row.name, qty: Math.abs(row.qty), note: row.note },
+    ];
+    setDetailData({
+      txCode: match?.code ?? row.txCode,
+      direction: row.direction,
+      actor: match?.orderer,
+      date: formatDateTime(match?.date ?? row.rawTime),
+      note: match?.note ?? row.note,
+      lines,
+    });
+    setDetailOpen(true);
   };
 
   const exportCsv = () => {
@@ -340,7 +412,7 @@ export function RiwayatPage() {
             <Search className="size-4 text-muted-foreground" />
             <Input
               className="border-0 shadow-none focus-visible:ring-0"
-              placeholder="Cari barang, vendor, atau catatan"
+              placeholder="Cari kode transaksi, barang, vendor, atau catatan"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -375,19 +447,21 @@ export function RiwayatPage() {
             <TableHeader className="bg-slate-100">
               <TableRow>
                 <TableHead className="font-semibold text-slate-800">Waktu</TableHead>
+                <TableHead className="font-semibold text-slate-800">Kode transaksi</TableHead>
                 <TableHead className="font-semibold text-slate-800">Kode barang</TableHead>
                 <TableHead className="font-semibold text-slate-800">Nama barang</TableHead>
                 <TableHead className="font-semibold text-slate-800">Jenis</TableHead>
                 <TableHead className="font-semibold text-slate-800">Qty</TableHead>
                 <TableHead className="font-semibold text-slate-800">Vendor</TableHead>
                 <TableHead className="font-semibold text-slate-800">Catatan</TableHead>
+                <TableHead className="font-semibold text-slate-800 text-center">Detail</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat riwayat...
@@ -396,7 +470,7 @@ export function RiwayatPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -405,7 +479,7 @@ export function RiwayatPage() {
               ) : pageRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data. Ubah filter atau catat transaksi baru.
@@ -419,8 +493,11 @@ export function RiwayatPage() {
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {row.time}
                       </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-700">
+                        {row.txCode}
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        {row.code}
+                        {row.itemCode}
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{row.name}</div>
@@ -448,6 +525,15 @@ export function RiwayatPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {row.note ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <button
+                          className="inline-flex items-center justify-center rounded-md border px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                          onClick={() => openDetail(row)}
+                        >
+                          <Eye className="mr-1 size-4" />
+                          Detail
+                        </button>
                       </TableCell>
                     </TableRow>
                   );
@@ -502,6 +588,63 @@ export function RiwayatPage() {
           </Pager>
         </div>
       </div>
+
+      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-base">
+              {detailData?.txCode ?? "Detail transaksi"}
+              {detailData ? (
+                <Badge
+                  className={cn(
+                    "rounded-full px-2 py-1 text-xs",
+                    detailData.direction === "Masuk"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-orange-50 text-orange-700"
+                  )}
+                >
+                  {detailData.direction}
+                </Badge>
+              ) : null}
+            </SheetTitle>
+            <SheetDescription>
+              {detailData?.date ?? "Pilih baris untuk melihat detail."}
+            </SheetDescription>
+          </SheetHeader>
+
+          {detailData ? (
+            <div className="px-4 pb-6 space-y-4">
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="text-muted-foreground">Vendor/PO</p>
+                <p className="font-medium">{detailData.actor ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="text-muted-foreground">Catatan</p>
+                <p className="font-medium">{detailData.note ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border">
+                <div className="border-b px-4 py-3 font-semibold">Detail barang</div>
+                <div className="max-h-80 overflow-y-auto divide-y">
+                  {detailData.lines.map((line, idx) => (
+                    <div key={`${line.code}-${idx}`} className="px-4 py-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold">{line.name ?? line.code}</p>
+                          <p className="text-xs text-muted-foreground">{line.code}</p>
+                        </div>
+                        <span className="font-semibold">{line.qty} pcs</span>
+                      </div>
+                      {line.note ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{line.note}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

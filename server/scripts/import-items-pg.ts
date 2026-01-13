@@ -1,15 +1,18 @@
-import "dotenv/config";
-import { Pool } from "pg";
-import { inventoryItems } from "../../client/src/components/inventory/items.ts";
+import 'dotenv/config';
+import { Pool } from 'pg';
+import { inventoryItems } from '../../client/src/components/inventory/items.ts';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error("DATABASE_URL not set. Please add it to server/.env");
+  console.error('DATABASE_URL not set. Please add it to server/.env');
   process.exit(1);
 }
 
 // Allow relaxed TLS only when NODE_TLS_REJECT_UNAUTHORIZED=0
-const ssl = process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? { rejectUnauthorized: false } : undefined;
+const ssl =
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0'
+    ? { rejectUnauthorized: false }
+    : undefined;
 const pool = new Pool({ connectionString, ssl });
 
 async function main() {
@@ -31,14 +34,21 @@ async function main() {
     chunk.forEach((row, idx) => {
       const base = idx * 6;
       params.push(
-        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`,
       );
-      values.push(row.code, row.name, row.category, row.subCategory, row.kind, row.stock);
+      values.push(
+        row.code,
+        row.name,
+        row.category,
+        row.subCategory,
+        row.kind,
+        row.stock,
+      );
     });
 
     const sql = `
       INSERT INTO "Item" ("code", "name", "category", "subCategory", "kind", "stock")
-      VALUES ${params.join(",")}
+      VALUES ${params.join(',')}
       ON CONFLICT ("code") DO UPDATE SET
         "name" = EXCLUDED."name",
         "category" = EXCLUDED."category",
@@ -59,7 +69,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error("Failed to import items", err);
+    console.error('Failed to import items', err);
     process.exit(1);
   })
   .finally(async () => {

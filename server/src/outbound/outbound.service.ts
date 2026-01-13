@@ -2,6 +2,19 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateOutboundDto } from './dto/create-outbound.dto.js';
 
+function startOfDay(value: Date) {
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatTxnCode(prefix: string, date: Date, sequence: number) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${prefix}-${yyyy}${mm}${dd}-${String(sequence).padStart(4, '0')}`;
+}
+
 @Injectable()
 export class OutboundService {
   constructor(private readonly prisma: PrismaService) {}
@@ -17,10 +30,21 @@ export class OutboundService {
 
   async create(dto: CreateOutboundDto) {
     return this.prisma.$transaction(async (tx) => {
+      const date = new Date(dto.date);
+      const dayStart = startOfDay(date);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const sameDayCount = await tx.outbound.count({
+        where: { date: { gte: dayStart, lt: dayEnd } },
+      });
+      const code = formatTxnCode('OUT', dayStart, sameDayCount + 1);
+
       const outbound = await tx.outbound.create({
         data: {
+          code,
           orderer: dto.orderer,
-          date: new Date(dto.date),
+          date,
           note: dto.note,
           lines: {
             create: dto.lines.map((l) => ({
