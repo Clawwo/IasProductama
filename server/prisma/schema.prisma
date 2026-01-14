@@ -88,11 +88,12 @@ model Item {
   updatedAt   DateTime @default(now()) @updatedAt
 }
 
-model RawMaterial {
+model BahanBaku {
   code      String   @id
   name      String?
   category  String?
-  unit      String?
+  subCategory String?
+  kind      String?
   stock     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
