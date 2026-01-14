@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ItemsModule } from './items/items.module.js';
 import { OutboundModule } from './outbound/outbound.module.js';
 import { DraftsModule } from './drafts/drafts.module.js';
+import { RawMaterialsModule } from './raw-materials/raw-materials.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { DraftsModule } from './drafts/drafts.module.js';
     AuthModule,
     ItemsModule,
     DraftsModule,
+    RawMaterialsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

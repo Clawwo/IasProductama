@@ -16,7 +16,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      secretOrKey: process.env.JWT_ACCESS_SECRET ?? process.env.JWT_SECRET ?? 'dev-access-secret',
+      secretOrKey:
+        process.env.JWT_ACCESS_SECRET ??
+        process.env.JWT_SECRET ??
+        'dev-access-secret',
     });
   }
 
@@ -26,7 +29,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       include: { user: true },
     });
 
-    const expired = session?.expiresAt && session.expiresAt.getTime() <= Date.now();
+    const expired =
+      session?.expiresAt && session.expiresAt.getTime() <= Date.now();
 
     if (!session || session.revokedAt || expired || !session.user.isActive) {
       throw new UnauthorizedException();

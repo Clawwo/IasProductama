@@ -6,7 +6,9 @@ export class LoginDto {
   email!: string;
 
   // Coerce numeric inputs (e.g., from form fields sent as numbers) into strings
-  @Transform(({ value }) => (value !== undefined && value !== null ? String(value) : value))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? String(value) : value,
+  )
   @IsString()
   @MinLength(6)
   password!: string;
