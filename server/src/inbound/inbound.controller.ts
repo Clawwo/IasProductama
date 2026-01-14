@@ -9,7 +9,9 @@ export class InboundController {
   @Get()
   findRecent(@Query('limit') limit?: string) {
     const parsed = Number(limit);
-    return this.inboundService.findRecent(Number.isFinite(parsed) ? parsed : undefined);
+    return this.inboundService.findRecent(
+      Number.isFinite(parsed) ? parsed : undefined,
+    );
   }
 
   @Post()

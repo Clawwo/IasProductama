@@ -27,6 +27,7 @@ import { SummaryChart } from "./SummaryChart";
 export type AppNavKey =
   | "dashboard"
   | "inventory"
+  | "raw"
   | "masuk"
   | "keluar"
   | "drafts"

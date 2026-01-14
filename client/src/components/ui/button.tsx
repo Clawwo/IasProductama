@@ -35,7 +35,6 @@ const buttonVariants = cva(
     },
   }
 )
-
 function Button({
   className,
   variant = "default",
@@ -59,4 +58,5 @@ function Button({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }
