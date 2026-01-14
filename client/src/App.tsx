@@ -74,11 +74,26 @@ function SidebarNav({
     icon: typeof LayoutDashboard;
     href: string;
   }> = [
-    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, href: "#dashboard" },
+    {
+      key: "dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      href: "#dashboard",
+    },
     { key: "inventory", label: "Inventory", icon: Box, href: "#inventory" },
     { key: "raw", label: "Bahan Baku", icon: Box, href: "#bahan-baku" },
-    { key: "masuk", label: "Barang Masuk", icon: ArrowDownLeft, href: "#masuk" },
-    { key: "keluar", label: "Barang Keluar", icon: ArrowUpRight, href: "#keluar" },
+    {
+      key: "masuk",
+      label: "Barang Masuk",
+      icon: ArrowDownLeft,
+      href: "#masuk",
+    },
+    {
+      key: "keluar",
+      label: "Barang Keluar",
+      icon: ArrowUpRight,
+      href: "#keluar",
+    },
     { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
   ];
@@ -91,8 +106,12 @@ function SidebarNav({
             JD
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold leading-tight">Jogja Drumband</span>
-            <span className="text-xs text-muted-foreground leading-tight">Warehouse Control</span>
+            <span className="text-sm font-semibold leading-tight">
+              Jogja Drumband
+            </span>
+            <span className="text-xs text-muted-foreground leading-tight">
+              Warehouse Control
+            </span>
           </div>
         </div>
       </SidebarHeader>

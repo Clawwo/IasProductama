@@ -23,13 +23,15 @@ const API_BASE = (
 const RAW_URL = `${API_BASE}/api/raw-materials`;
 
 export function RawMaterialsPage() {
-  const [rows, setRows] = useState<Array<{
-    code: string;
-    name?: string;
-    category?: string;
-    unit?: string;
-    stock: number;
-  }>>([]);
+  const [rows, setRows] = useState<
+    Array<{
+      code: string;
+      name?: string;
+      category?: string;
+      unit?: string;
+      stock: number;
+    }>
+  >([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -118,7 +120,9 @@ export function RawMaterialsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-muted-foreground">Daftar bahan baku produksi</p>
+          <p className="text-sm text-muted-foreground">
+            Daftar bahan baku produksi
+          </p>
           <h1 className="text-2xl font-semibold leading-tight">Barang Baku</h1>
         </div>
         <div className="flex gap-2">
@@ -144,7 +148,7 @@ export function RawMaterialsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={() => toggleSort("stock")}> 
+          <Button variant="outline" onClick={() => toggleSort("stock")}>
             <ArrowDownUp className="mr-2 size-4" /> Sortir stok
           </Button>
         </div>
@@ -154,49 +158,78 @@ export function RawMaterialsPage() {
             <TableHeader className="bg-slate-100">
               <TableRow>
                 <TableHead className="font-semibold text-slate-800">
-                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("code")}>
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => toggleSort("code")}
+                  >
                     Kode
                   </button>
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
-                  <button className="inline-flex items-center gap-1" onClick={() => toggleSort("name")}>
+                  <button
+                    className="inline-flex items-center gap-1"
+                    onClick={() => toggleSort("name")}
+                  >
                     Nama
                   </button>
                 </TableHead>
-                <TableHead className="font-semibold text-slate-800">Kategori</TableHead>
-                <TableHead className="font-semibold text-slate-800">Satuan</TableHead>
-                <TableHead className="font-semibold text-slate-800 text-right">Stok</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Kategori
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Satuan
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800 text-right">
+                  Stok
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={5}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
                     Memuat data...
                   </TableCell>
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-6 text-center text-sm text-red-600">
+                  <TableCell
+                    colSpan={5}
+                    className="py-6 text-center text-sm text-red-600"
+                  >
                     {error}
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={5}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
                     Tidak ada data.
                   </TableCell>
                 </TableRow>
               ) : (
                 filtered.map((row) => (
                   <TableRow key={row.code} className="odd:bg-slate-50">
-                    <TableCell className="font-mono text-xs text-muted-foreground">{row.code}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {row.code}
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">{row.name ?? row.code}</div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{row.category ?? "-"}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.unit ?? "-"}</TableCell>
-                    <TableCell className="text-right font-semibold">{row.stock}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.category ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.unit ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {row.stock}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
