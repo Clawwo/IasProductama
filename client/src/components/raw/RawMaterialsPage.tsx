@@ -20,13 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  ArrowDownUp,
-  Download,
-  Filter,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { ArrowDownUp, Download, Filter, RefreshCw, Search } from "lucide-react";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -93,7 +87,9 @@ export function RawMaterialsPage() {
       return left.localeCompare(right) * dir;
     });
     return sorted.filter((r) => {
-      const textMatch = `${r.code} ${r.name ?? ""} ${r.category ?? ""} ${r.subCategory ?? ""} ${r.kind ?? ""}`
+      const textMatch = `${r.code} ${r.name ?? ""} ${r.category ?? ""} ${
+        r.subCategory ?? ""
+      } ${r.kind ?? ""}`
         .toLowerCase()
         .includes(term);
       const status = getStatus(r.stock);
@@ -135,11 +131,11 @@ export function RawMaterialsPage() {
     );
   }
 
-function getStatus(stock: number): StockStatus {
-  if (stock <= 5) return "kritis";
-  if (stock <= 14) return "menipis";
-  return "aman";
-}
+  function getStatus(stock: number): StockStatus {
+    if (stock <= 5) return "kritis";
+    if (stock <= 14) return "menipis";
+    return "aman";
+  }
 
   const exportCsv = () => {
     if (filtered.length === 0) return;
@@ -258,7 +254,9 @@ function getStatus(stock: number): StockStatus {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="gap-2">
                   <Filter className="size-4" /> Kategori
-                  {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ""}
+                  {selectedCategories.length > 0
+                    ? `(${selectedCategories.length})`
+                    : ""}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-56">
