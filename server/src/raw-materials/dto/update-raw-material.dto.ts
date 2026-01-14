@@ -11,7 +11,11 @@ export class UpdateRawMaterialDto {
 
   @IsOptional()
   @IsString()
-  unit?: string;
+  subCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  kind?: string;
 
   @IsOptional()
   @IsInt()

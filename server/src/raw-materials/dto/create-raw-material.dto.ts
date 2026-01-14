@@ -15,7 +15,11 @@ export class CreateRawMaterialDto {
 
   @IsOptional()
   @IsString()
-  unit?: string;
+  subCategory?: string;
+
+  @IsOptional()
+  @IsString()
+  kind?: string;
 
   @IsOptional()
   @IsInt()
