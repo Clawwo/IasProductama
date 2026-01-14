@@ -4,6 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import {
   Table,
   TableBody,
   TableCell,
@@ -11,10 +20,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowDownUp, Download, RefreshCw, Search } from "lucide-react";
+import { ArrowDownUp, Download, Filter, RefreshCw, Search } from "lucide-react";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
+type StockStatus = "aman" | "menipis" | "kritis";
 const API_BASE = (
   (import.meta as { env?: Env }).env?.VITE_API_BASE ?? "http://localhost:3000"
 )
@@ -28,7 +38,8 @@ export function RawMaterialsPage() {
       code: string;
       name?: string;
       category?: string;
-      unit?: string;
+      subCategory?: string;
+      kind?: string;
       stock: number;
     }>
   >([]);
@@ -37,6 +48,14 @@ export function RawMaterialsPage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<"code" | "name" | "stock">("code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [statusFilter, setStatusFilter] = useState<"" | StockStatus>("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.category && set.add(r.category));
+    return Array.from(set).sort();
+  }, [rows]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,22 +86,66 @@ export function RawMaterialsPage() {
       const right = (b[sortKey] ?? "").toString().toLowerCase();
       return left.localeCompare(right) * dir;
     });
-    if (!term) return sorted;
-    return sorted.filter((r) =>
-      `${r.code} ${r.name ?? ""} ${r.category ?? ""}`
+    return sorted.filter((r) => {
+      const textMatch = `${r.code} ${r.name ?? ""} ${r.category ?? ""} ${
+        r.subCategory ?? ""
+      } ${r.kind ?? ""}`
         .toLowerCase()
-        .includes(term)
+        .includes(term);
+      const status = getStatus(r.stock);
+      const statusMatch = statusFilter ? status === statusFilter : true;
+      const catMatch =
+        selectedCategories.length === 0 ||
+        (r.category && selectedCategories.includes(r.category));
+      return textMatch && statusMatch && catMatch;
+    });
+  }, [rows, search, sortDir, sortKey, statusFilter, selectedCategories]);
+
+  const totalStock = useMemo(
+    () => filtered.reduce((sum, r) => sum + r.stock, 0),
+    [filtered]
+  );
+
+  function StatusTab({
+    label,
+    active,
+    onClick,
+  }: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+  }) {
+    return (
+      <button
+        type="button"
+        className={
+          "rounded-full px-3 py-1.5 text-xs sm:text-sm " +
+          (active
+            ? "bg-slate-900 text-white shadow-sm"
+            : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50")
+        }
+        onClick={onClick}
+      >
+        {label}
+      </button>
     );
-  }, [rows, search, sortDir, sortKey]);
+  }
+
+  function getStatus(stock: number): StockStatus {
+    if (stock <= 5) return "kritis";
+    if (stock <= 14) return "menipis";
+    return "aman";
+  }
 
   const exportCsv = () => {
     if (filtered.length === 0) return;
-    const header = ["Kode", "Nama", "Kategori", "Satuan", "Stok"];
+    const header = ["Kode", "Nama", "Kategori", "Subkategori", "Jenis", "Stok"];
     const csvRows = filtered.map((r) => [
       r.code,
       r.name ?? "",
       r.category ?? "",
-      r.unit ?? "",
+      r.subCategory ?? "",
+      r.kind ?? "",
       r.stock,
     ]);
     const csv = [header, ...csvRows]
@@ -116,6 +179,36 @@ export function RawMaterialsPage() {
     }
   };
 
+  function StatusBadge({ status }: { status: StockStatus }) {
+    const map = {
+      aman: {
+        label: "Aman",
+        cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      },
+      menipis: {
+        label: "Menipis",
+        cls: "bg-amber-50 text-amber-700 border-amber-200",
+      },
+      kritis: {
+        label: "Kritis",
+        cls: "bg-red-50 text-red-700 border-red-200",
+      },
+    } as const;
+    const cfg = map[status];
+    return (
+      <Badge
+        variant="outline"
+        className={cn(
+          "flex items-center gap-2 px-3 py-1 text-xs font-semibold",
+          cfg.cls
+        )}
+      >
+        <span className="size-2 rounded-full bg-current" />
+        <span className="truncate">{cfg.label}</span>
+      </Badge>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -124,6 +217,14 @@ export function RawMaterialsPage() {
             Daftar bahan baku produksi
           </p>
           <h1 className="text-2xl font-semibold leading-tight">Barang Baku</h1>
+          <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
+            <Badge variant="secondary" className="rounded-full px-3">
+              {filtered.length} item
+            </Badge>
+            <Badge variant="secondary" className="rounded-full px-3">
+              {totalStock} stok total
+            </Badge>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={load} disabled={loading}>
@@ -143,14 +244,75 @@ export function RawMaterialsPage() {
             <Search className="size-4 text-muted-foreground" />
             <Input
               className="border-0 shadow-none focus-visible:ring-0"
-              placeholder="Cari kode, nama, atau kategori"
+              placeholder="Cari kode, nama, kategori, subkategori, atau jenis"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={() => toggleSort("stock")}>
-            <ArrowDownUp className="mr-2 size-4" /> Sortir stok
-          </Button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" /> Kategori
+                  {selectedCategories.length > 0
+                    ? `(${selectedCategories.length})`
+                    : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuLabel>Pilih kategori</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedCategories.length === 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) setSelectedCategories([]);
+                  }}
+                >
+                  Semua kategori
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {categories.map((cat) => (
+                  <DropdownMenuCheckboxItem
+                    key={cat}
+                    checked={selectedCategories.includes(cat)}
+                    onCheckedChange={(checked) => {
+                      setSelectedCategories((prev) => {
+                        if (checked) return [...prev, cat];
+                        return prev.filter((c) => c !== cat);
+                      });
+                    }}
+                  >
+                    {cat}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div className="flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+              <StatusTab
+                label="Semua"
+                active={!statusFilter}
+                onClick={() => setStatusFilter("")}
+              />
+              <StatusTab
+                label="Aman"
+                active={statusFilter === "aman"}
+                onClick={() => setStatusFilter("aman")}
+              />
+              <StatusTab
+                label="Menipis"
+                active={statusFilter === "menipis"}
+                onClick={() => setStatusFilter("menipis")}
+              />
+              <StatusTab
+                label="Kritis"
+                active={statusFilter === "kritis"}
+                onClick={() => setStatusFilter("kritis")}
+              />
+            </div>
+            <Button variant="outline" onClick={() => toggleSort("stock")}>
+              <ArrowDownUp className="mr-2 size-4" /> Sortir stok
+            </Button>
+          </div>
         </div>
         <Separator />
         <div className="overflow-x-auto">
@@ -177,7 +339,13 @@ export function RawMaterialsPage() {
                   Kategori
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
-                  Satuan
+                  Subkategori
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Jenis
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Status
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800 text-right">
                   Stok
@@ -188,7 +356,7 @@ export function RawMaterialsPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat data...
@@ -197,7 +365,7 @@ export function RawMaterialsPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -206,7 +374,7 @@ export function RawMaterialsPage() {
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={7}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data.
@@ -225,7 +393,13 @@ export function RawMaterialsPage() {
                       {row.category ?? "-"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {row.unit ?? "-"}
+                      {row.subCategory ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.kind ?? "-"}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={getStatus(row.stock)} />
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       {row.stock}
