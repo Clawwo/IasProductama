@@ -54,6 +54,7 @@ const INBOUND_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/inbound`;
 const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
+const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 function getInchSize(text: string): string | null {
@@ -130,6 +131,7 @@ export function InboundPage() {
   const [lugSize, setLugSize] = useState("all");
   const [pipeLength, setPipeLength] = useState("all");
   const [packSize, setPackSize] = useState("all");
+  const [rawType, setRawType] = useState("all");
   const [lines, setLines] = useState<LineItem[]>([]);
   const [formError, setFormError] = useState<string>("");
   const [submitStatus, setSubmitStatus] = useState<
@@ -145,6 +147,7 @@ export function InboundPage() {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
+  const [rawItems, setRawItems] = useState<RemoteItem[]>([]);
 
   function pushToast(variant: ToastVariant, title: string, message?: string) {
     const id = crypto.randomUUID();
@@ -156,10 +159,19 @@ export function InboundPage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch(ITEMS_URL);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as RemoteItem[];
-      setRemoteItems(data);
+      const [itemsRes, rawRes] = await Promise.all([
+        fetch(ITEMS_URL),
+        fetch(RAW_URL),
+      ]);
+
+      if (!itemsRes.ok) throw new Error(await itemsRes.text());
+      if (!rawRes.ok) throw new Error(await rawRes.text());
+
+      const itemsData = (await itemsRes.json()) as RemoteItem[];
+      const rawData = (await rawRes.json()) as RemoteItem[];
+
+      setRemoteItems(itemsData);
+      setRawItems(rawData);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
@@ -231,12 +243,33 @@ export function InboundPage() {
   }, [date]);
 
   const mergedItems = useMemo(() => {
-    const stockMap = new Map(remoteItems.map((it) => [it.code, it.stock]));
-    return inventoryItemsWithKind.map((it) => ({
-      ...it,
-      stock: stockMap.has(it.code) ? stockMap.get(it.code)! : 0,
-    }));
-  }, [remoteItems]);
+    const allRemote = [...remoteItems, ...rawItems];
+    const remoteMap = new Map(allRemote.map((it) => [it.code, it]));
+
+    const baseCodes = new Set(inventoryItemsWithKind.map((b) => b.code));
+
+    const baseMerged = inventoryItemsWithKind.map((it) => {
+      const api = remoteMap.get(it.code);
+      return {
+        ...it,
+        ...api,
+        stock: api?.stock ?? it.stock ?? 0,
+      };
+    });
+
+    const extras = allRemote
+      .filter((it) => !baseCodes.has(it.code))
+      .map((it) => ({
+        code: it.code,
+        name: it.name ?? it.code,
+        category: it.category ?? "Bahan Baku",
+        subCategory: it.subCategory,
+        kind: it.kind ?? it.subCategory,
+        stock: it.stock ?? 0,
+      }));
+
+    return [...baseMerged, ...extras];
+  }, [remoteItems, rawItems]);
 
   const selectedItem = useMemo(
     () => mergedItems.find((it) => it.code === lineItem.code),
@@ -246,6 +279,16 @@ export function InboundPage() {
   const categories = useMemo(() => {
     const set = new Set<string>();
     mergedItems.forEach((it) => set.add(it.category));
+    return ["all", ...Array.from(set).sort()];
+  }, [mergedItems]);
+
+  const rawTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    mergedItems.forEach((it) => {
+      if (it.category === "Bahan Baku" && it.subCategory) {
+        set.add(it.subCategory);
+      }
+    });
     return ["all", ...Array.from(set).sort()];
   }, [mergedItems]);
 
@@ -357,6 +400,7 @@ export function InboundPage() {
     setLugSize("all");
     setPipeLength("all");
     setPackSize("all");
+    setRawType("all");
   }, [selectedCategory]);
 
   useEffect(() => {
@@ -372,6 +416,7 @@ export function InboundPage() {
     lugSize,
     pipeLength,
     packSize,
+    rawType,
   ]);
 
   const filteredItems = useMemo(() => {
@@ -413,6 +458,10 @@ export function InboundPage() {
         if (packSize !== "all" && packSize !== size) return false;
       }
 
+      if (selectedCategory === "Bahan Baku") {
+        if (rawType !== "all" && it.subCategory !== rawType) return false;
+      }
+
       if (!term) return true;
       return (
         it.name.toLowerCase().includes(term) ||
@@ -429,6 +478,7 @@ export function InboundPage() {
     lugSize,
     pipeLength,
     packSize,
+    rawType,
     searchTerm,
     mergedItems,
   ]);
@@ -520,6 +570,18 @@ export function InboundPage() {
       ];
     }
 
+    if (selectedCategory === "Bahan Baku") {
+      return [
+        <FilterDropdown
+          key="raw-type"
+          label="Jenis"
+          value={rawType}
+          options={rawTypeOptions}
+          onSelect={setRawType}
+        />,
+      ];
+    }
+
     return [];
   }, [
     selectedCategory,
@@ -533,12 +595,14 @@ export function InboundPage() {
     lugSize,
     pipeLength,
     packSize,
+    rawType,
     bodyKindOptions,
     bodySizeOptions,
     headSizeOptions,
     lugSizeOptions,
     pipeLengthOptions,
     packSizeOptions,
+    rawTypeOptions,
   ]);
 
   const gridTemplateColumns = useMemo(() => {

@@ -50,10 +50,17 @@ export function RawMaterialsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [statusFilter, setStatusFilter] = useState<"" | StockStatus>("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => r.category && set.add(r.category));
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const types = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.subCategory && set.add(r.subCategory));
     return Array.from(set).sort();
   }, [rows]);
 
@@ -97,9 +104,12 @@ export function RawMaterialsPage() {
       const catMatch =
         selectedCategories.length === 0 ||
         (r.category && selectedCategories.includes(r.category));
-      return textMatch && statusMatch && catMatch;
+      const typeMatch =
+        selectedTypes.length === 0 ||
+        (r.subCategory && selectedTypes.includes(r.subCategory));
+      return textMatch && statusMatch && catMatch && typeMatch;
     });
-  }, [rows, search, sortDir, sortKey, statusFilter, selectedCategories]);
+  }, [rows, search, sortDir, sortKey, statusFilter, selectedCategories, selectedTypes]);
 
   const totalStock = useMemo(
     () => filtered.reduce((sum, r) => sum + r.stock, 0),
@@ -283,6 +293,41 @@ export function RawMaterialsPage() {
                     }}
                   >
                     {cat}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" /> Jenis
+                  {selectedTypes.length > 0 ? `(${selectedTypes.length})` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuLabel>Pilih jenis</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedTypes.length === 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) setSelectedTypes([]);
+                  }}
+                >
+                  Semua jenis
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {types.map((t) => (
+                  <DropdownMenuCheckboxItem
+                    key={t}
+                    checked={selectedTypes.includes(t)}
+                    onCheckedChange={(checked) => {
+                      setSelectedTypes((prev) => {
+                        if (checked) return [...prev, t];
+                        return prev.filter((x) => x !== t);
+                      });
+                    }}
+                  >
+                    {t}
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
