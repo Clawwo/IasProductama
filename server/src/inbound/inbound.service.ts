@@ -59,24 +59,48 @@ export class InboundService {
       });
 
       for (const line of dto.lines) {
-        await tx.item.upsert({
-          where: { code: line.code },
-          update: {
-            stock: { increment: line.qty },
-            name: line.name ?? undefined,
-            category: line.category ?? undefined,
-            subCategory: line.subCategory ?? undefined,
-            kind: line.kind ?? undefined,
-          },
-          create: {
-            code: line.code,
-            name: line.name,
-            category: line.category,
-            subCategory: line.subCategory,
-            kind: line.kind,
-            stock: line.qty,
-          },
-        });
+        const isRaw =
+          (line.category ?? '').toLowerCase().startsWith('bahan baku');
+
+        if (isRaw) {
+          await tx.bahanBaku.upsert({
+            where: { code: line.code },
+            update: {
+              stock: { increment: line.qty },
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+            },
+            create: {
+              code: line.code,
+              name: line.name,
+              category: line.category,
+              subCategory: line.subCategory,
+              kind: line.kind,
+              stock: line.qty,
+            },
+          });
+        } else {
+          await tx.item.upsert({
+            where: { code: line.code },
+            update: {
+              stock: { increment: line.qty },
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+            },
+            create: {
+              code: line.code,
+              name: line.name,
+              category: line.category,
+              subCategory: line.subCategory,
+              kind: line.kind,
+              stock: line.qty,
+            },
+          });
+        }
       }
 
       return inbound;
