@@ -99,6 +99,68 @@ model BahanBaku {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+model Bom {
+  id          String    @id @default(uuid())
+  productCode String    @unique
+  productName String?
+  category    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  lines       BomLine[]
+}
+
+model BomLine {
+  id         String        @id @default(uuid())
+  bomId      String
+  sourceType BomSourceType @default(BAHAN_BAKU)
+  code       String?
+  name       String?
+  qty        Float
+  bom        Bom           @relation(fields: [bomId], references: [id], onDelete: Cascade)
+
+  @@index([bomId])
+}
+
+model Production {
+  id             String                  @id @default(uuid())
+  code           String                  @unique
+  date           DateTime
+  note           String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  rawLines       ProductionRawLine[]
+  finishedLines  ProductionFinishedLine[]
+}
+
+model ProductionRawLine {
+  id            String      @id @default(uuid())
+  productionId  String
+  code          String
+  name          String?
+  category      String?
+  subCategory   String?
+  kind          String?
+  qty           Int
+  note          String?
+  sourceType    BomSourceType @default(BAHAN_BAKU)
+  production    Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId])
+}
+
+model ProductionFinishedLine {
+  id            String      @id @default(uuid())
+  productionId  String
+  code          String
+  name          String?
+  category      String?
+  subCategory   String?
+  kind          String?
+  qty           Int
+  note          String?
+  production    Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId])
 model Product {
   code        String   @id
   name        String
@@ -127,4 +189,10 @@ enum Role {
 enum DraftType {
   INBOUND
   OUTBOUND
+  PRODUCTION
+}
+
+enum BomSourceType {
+  ITEM
+  BAHAN_BAKU
 }

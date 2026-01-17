@@ -30,6 +30,7 @@ export type AppNavKey =
   | "masuk"
   | "keluar"
   | "drafts"
+  | "produksi"
   | "riwayat";
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")

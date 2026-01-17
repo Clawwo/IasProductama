@@ -20,7 +20,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:seed": "npx prisma db execute --stdin < prisma/seed.sql",
-    "seed:items": "tsx scripts/import-items-pg.ts"
+    "seed:items": "tsx scripts/import-items-pg.ts",
+    "seed:finished": "tsx scripts/import-finished-from-bom.ts",
+    "seed:bom": "tsx scripts/import-bom-table.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -50,6 +52,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
+    "@types/pg": "^8.11.6",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",

@@ -9,6 +9,8 @@ import { ItemsModule } from './items/items.module.js';
 import { OutboundModule } from './outbound/outbound.module.js';
 import { DraftsModule } from './drafts/drafts.module.js';
 import { RawMaterialsModule } from './raw-materials/raw-materials.module.js';
+import { ProductionModule } from './production/production.module.js';
+import { BomModule } from './bom/bom.module.js';
 import { ProductsModule } from './products/products.module.js';
 
 @Module({
@@ -21,6 +23,8 @@ import { ProductsModule } from './products/products.module.js';
     ItemsModule,
     DraftsModule,
     RawMaterialsModule,
+    ProductionModule,
+    BomModule,
     ProductsModule,
   ],
   controllers: [AppController],

@@ -59,8 +59,9 @@ export class InboundService {
       });
 
       for (const line of dto.lines) {
-        const isRaw =
-          (line.category ?? '').toLowerCase().startsWith('bahan baku');
+        const isRaw = (line.category ?? '')
+          .toLowerCase()
+          .startsWith('bahan baku');
 
         if (isRaw) {
           await tx.bahanBaku.upsert({
