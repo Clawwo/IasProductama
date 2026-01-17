@@ -17,19 +17,32 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Calendar, Factory, Plus, Search, StickyNote, Wrench } from "lucide-react";
+import {
+  Calendar,
+  Factory,
+  Plus,
+  Search,
+  StickyNote,
+  Wrench,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { inventoryItemsWithKind } from "../inventory/items";
 
 type Env = { VITE_API_BASE?: string };
-const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
+const API_BASE = (
+  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? ""
+).trim();
 const PRODUCTION_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/production`;
-const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
+const PRODUCTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/products`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const BOM_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/bom`;
 
 type ToastVariant = "default" | "destructive";
-type Toast = { id: string; variant: ToastVariant; title: string; message?: string };
+type Toast = {
+  id: string;
+  variant: ToastVariant;
+  title: string;
+  message?: string;
+};
 
 type LineItem = {
   id: string;
@@ -56,7 +69,13 @@ type BomLine = {
   name?: string | null;
   qty: number;
 };
-type BomEntry = { id: string; productCode: string; productName?: string | null; category?: string | null; lines: BomLine[] };
+type BomEntry = {
+  id: string;
+  productCode: string;
+  productName?: string | null;
+  category?: string | null;
+  lines: BomLine[];
+};
 
 function normalize(text: string | undefined) {
   return (text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -66,7 +85,9 @@ export function ProductionPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [submitStatus, setSubmitStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
   const [submitMessage, setSubmitMessage] = useState("");
 
   const [finishedLine, setFinishedLine] = useState<LineItem>({
@@ -94,29 +115,36 @@ export function ProductionPage() {
   const [finishedDropdownOpen, setFinishedDropdownOpen] = useState(false);
   const [rawDropdownOpen, setRawDropdownOpen] = useState(false);
 
-  const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
+  const [products, setProducts] = useState<RemoteItem[]>([]);
   const [rawItems, setRawItems] = useState<RemoteItem[]>([]);
   const [bomCache, setBomCache] = useState<Record<string, BomEntry>>({});
 
-  const pushToast = useCallback((variant: ToastVariant, title: string, message?: string) => {
-    const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, variant, title, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4200);
-  }, []);
+  const pushToast = useCallback(
+    (variant: ToastVariant, title: string, message?: string) => {
+      const id = crypto.randomUUID();
+      setToasts((prev) => [...prev, { id, variant, title, message }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 4200);
+    },
+    []
+  );
 
   const fetchData = useCallback(async () => {
     try {
-      const [itemsRes, rawRes] = await Promise.all([fetch(ITEMS_URL), fetch(RAW_URL)]);
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
+      const [prodRes, rawRes] = await Promise.all([
+        fetch(PRODUCTS_URL),
+        fetch(RAW_URL),
+      ]);
+      if (!prodRes.ok) throw new Error(await prodRes.text());
       if (!rawRes.ok) throw new Error(await rawRes.text());
-      const itemsData = (await itemsRes.json()) as RemoteItem[];
+      const itemsData = (await prodRes.json()) as RemoteItem[];
       const rawData = (await rawRes.json()) as RemoteItem[];
-      setRemoteItems(itemsData);
+      setProducts(itemsData);
       setRawItems(rawData);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Tidak bisa memuat data.";
+      const msg =
+        err instanceof Error ? err.message : "Tidak bisa memuat data.";
       pushToast("destructive", "Gagal memuat", msg);
     }
   }, [pushToast]);
@@ -133,42 +161,28 @@ export function ProductionPage() {
     return map;
   }, [rawItems]);
 
-  const mergedFinishedItems = useMemo(() => {
-    const stockMap = new Map(remoteItems.map((it) => [it.code, it]));
-    const baseCodes = new Set(inventoryItemsWithKind.map((it) => it.code));
-    const base = inventoryItemsWithKind.map((it) => {
-      const api = stockMap.get(it.code);
-      return {
-        ...it,
-        stock: api?.stock ?? it.stock ?? 0,
-        category: api?.category ?? it.category,
-        subCategory: api?.subCategory ?? it.subCategory,
-        kind: api?.kind ?? it.kind,
-      } as RemoteItem & { category?: string; subCategory?: string; kind?: string };
-    });
-
-    const extra = remoteItems.filter((it) => !baseCodes.has(it.code));
-    return [...base, ...extra];
-  }, [remoteItems]);
+  const mergedFinishedItems = useMemo(() => products, [products]);
 
   const finishedFiltered = useMemo(() => {
     const term = finishedSearch.toLowerCase();
-    const allowedCats = new Set(["produk"]);
-    const list = mergedFinishedItems
-      .filter((it) => allowedCats.has(normalize(it.category)))
-      .filter((it) => {
-        if (!term) return true;
-        return it.code.toLowerCase().includes(term) || (it.name ?? "").toLowerCase().includes(term);
-      });
+    const list = mergedFinishedItems.filter((it) => {
+      if (!term) return true;
+      return (
+        it.code.toLowerCase().includes(term) ||
+        (it.name ?? "").toLowerCase().includes(term)
+      );
+    });
     return list.slice(0, 50);
   }, [mergedFinishedItems, finishedSearch]);
-
 
   const rawFiltered = useMemo(() => {
     const term = rawSearch.toLowerCase();
     const list = rawItems.filter((it) => {
       if (!term) return true;
-      return it.code.toLowerCase().includes(term) || (it.name ?? "").toLowerCase().includes(term);
+      return (
+        it.code.toLowerCase().includes(term) ||
+        (it.name ?? "").toLowerCase().includes(term)
+      );
     });
     return list.slice(0, 50);
   }, [rawItems, rawSearch]);
@@ -200,7 +214,7 @@ export function ProductionPage() {
         return null;
       }
     },
-    [bomCache, pushToast],
+    [bomCache, pushToast]
   );
 
   const applyBomToRaw = useCallback(
@@ -237,17 +251,17 @@ export function ProductionPage() {
         pushToast(
           "destructive",
           `BOM ${bomKey}: ${missing.length} bahan tidak dikenali`,
-          `Cek: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", ..." : ""}`,
+          `Cek: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", ..." : ""}`
         );
       } else {
         pushToast(
           "default",
           `BOM ${bomKey} terisi otomatis`,
-          `Ditambahkan ${lines.length} baris bahan baku.`,
+          `Ditambahkan ${lines.length} baris bahan baku.`
         );
       }
     },
-    [rawNameIndex, pushToast],
+    [rawNameIndex, pushToast]
   );
 
   async function addFinished() {
@@ -270,9 +284,13 @@ export function ProductionPage() {
             ? {
                 ...l,
                 qty: l.qty + finishedLine.qty,
-                note: newNote ? (l.note ? `${l.note} | ${newNote}` : newNote) : l.note,
+                note: newNote
+                  ? l.note
+                    ? `${l.note} | ${newNote}`
+                    : newNote
+                  : l.note,
               }
-            : l,
+            : l
         );
       }
       return [
@@ -288,13 +306,27 @@ export function ProductionPage() {
     });
 
     if (bomEntry) {
-      const bomKey = bomEntry.productName ?? bomEntry.productCode ?? finishedLine.name ?? finishedLine.code;
+      const bomKey =
+        bomEntry.productName ??
+        bomEntry.productCode ??
+        finishedLine.name ??
+        finishedLine.code;
       applyBomToRaw(bomKey || "BOM", bomEntry, finishedLine.qty);
     } else {
-      pushToast("destructive", "BOM tidak ditemukan", `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`);
+      pushToast(
+        "destructive",
+        "BOM tidak ditemukan",
+        `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`
+      );
     }
 
-    setFinishedLine({ id: "seed-finished", code: "", name: "", qty: 1, note: "" });
+    setFinishedLine({
+      id: "seed-finished",
+      code: "",
+      name: "",
+      qty: 1,
+      note: "",
+    });
     setFinishedSearch("");
   }
 
@@ -316,9 +348,13 @@ export function ProductionPage() {
             ? {
                 ...l,
                 qty: l.qty + rawLine.qty,
-                note: newNote ? (l.note ? `${l.note} | ${newNote}` : newNote) : l.note,
+                note: newNote
+                  ? l.note
+                    ? `${l.note} | ${newNote}`
+                    : newNote
+                  : l.note,
               }
-            : l,
+            : l
         );
       }
       return [
@@ -350,11 +386,19 @@ export function ProductionPage() {
       return;
     }
     if (finishedLines.length === 0) {
-      pushToast("destructive", "Barang jadi kosong", "Tambahkan minimal satu barang jadi.");
+      pushToast(
+        "destructive",
+        "Barang jadi kosong",
+        "Tambahkan minimal satu barang jadi."
+      );
       return;
     }
     if (rawLines.length === 0) {
-      pushToast("destructive", "Bahan baku kosong", "Tambahkan minimal satu bahan baku.");
+      pushToast(
+        "destructive",
+        "Bahan baku kosong",
+        "Tambahkan minimal satu bahan baku."
+      );
       return;
     }
 
@@ -400,13 +444,21 @@ export function ProductionPage() {
         throw new Error(text || "Gagal menyimpan produksi.");
       }
       const data = (await res.json()) as { code?: string };
-      const message = data?.code ? `Berhasil disimpan. Kode: ${data.code}` : "Berhasil disimpan.";
+      const message = data?.code
+        ? `Berhasil disimpan. Kode: ${data.code}`
+        : "Berhasil disimpan.";
       setSubmitStatus("success");
       setSubmitMessage(message);
       pushToast("default", "Produksi dicatat", message);
       setFinishedLines([]);
       setRawLines([]);
-      setFinishedLine({ id: "seed-finished", code: "", name: "", qty: 1, note: "" });
+      setFinishedLine({
+        id: "seed-finished",
+        code: "",
+        name: "",
+        qty: 1,
+        note: "",
+      });
       setRawLine({ id: "seed-raw", code: "", name: "", qty: 1, note: "" });
       fetchData();
     } catch (err: unknown) {
@@ -417,8 +469,14 @@ export function ProductionPage() {
     }
   }
 
-  const finishedTotalQty = useMemo(() => finishedLines.reduce((sum, l) => sum + l.qty, 0), [finishedLines]);
-  const rawTotalQty = useMemo(() => rawLines.reduce((sum, l) => sum + l.qty, 0), [rawLines]);
+  const finishedTotalQty = useMemo(
+    () => finishedLines.reduce((sum, l) => sum + l.qty, 0),
+    [finishedLines]
+  );
+  const rawTotalQty = useMemo(
+    () => rawLines.reduce((sum, l) => sum + l.qty, 0),
+    [rawLines]
+  );
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -430,28 +488,62 @@ export function ProductionPage() {
               <Factory className="size-5" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Produksi</p>
-              <h1 className="text-3xl font-semibold leading-tight">Catat Produksi</h1>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                Produksi
+              </p>
+              <h1 className="text-3xl font-semibold leading-tight">
+                Catat Produksi
+              </h1>
               <p className="text-sm text-slate-600">
-                Kurangi stok bahan baku dan tambah stok barang jadi dalam satu langkah.
+                Kurangi stok bahan baku dan tambah stok barang jadi dalam satu
+                langkah.
               </p>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard label="Barang jadi" value={`${finishedLines.length} baris`} sub={`Total qty ${finishedTotalQty}`} />
-            <SummaryCard label="Bahan baku" value={`${rawLines.length} baris`} sub={`Total qty ${rawTotalQty}`} />
-            <SummaryCard label="Tanggal" value={date || "-"} sub="Tanggal produksi" />
-            <SummaryCard label="Status" value={submitStatus === "loading" ? "Menyimpan..." : "Draft"} />
+            <SummaryCard
+              label="Barang jadi"
+              value={`${finishedLines.length} baris`}
+              sub={`Total qty ${finishedTotalQty}`}
+            />
+            <SummaryCard
+              label="Bahan baku"
+              value={`${rawLines.length} baris`}
+              sub={`Total qty ${rawTotalQty}`}
+            />
+            <SummaryCard
+              label="Tanggal"
+              value={date || "-"}
+              sub="Tanggal produksi"
+            />
+            <SummaryCard
+              label="Status"
+              value={submitStatus === "loading" ? "Menyimpan..." : "Draft"}
+            />
           </div>
         </header>
 
         <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <LabeledInput label="Tanggal produksi" icon={<Calendar className="size-4" />}>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <LabeledInput
+              label="Tanggal produksi"
+              icon={<Calendar className="size-4" />}
+            >
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </LabeledInput>
-            <LabeledInput label="Catatan" icon={<StickyNote className="size-4" />}>
-              <Input placeholder="Opsional" value={note} onChange={(e) => setNote(e.target.value)} />
+            <LabeledInput
+              label="Catatan"
+              icon={<StickyNote className="size-4" />}
+            >
+              <Input
+                placeholder="Opsional"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
             </LabeledInput>
           </div>
         </section>
@@ -462,8 +554,12 @@ export function ProductionPage() {
               <PackageIcon />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">Barang jadi (hasil)</p>
-              <p className="text-sm text-slate-600">Tambahkan barang jadi yang bertambah stoknya.</p>
+              <p className="text-sm font-semibold text-slate-900">
+                Barang jadi (hasil)
+              </p>
+              <p className="text-sm text-slate-600">
+                Tambahkan barang jadi yang bertambah stoknya.
+              </p>
             </div>
           </div>
 
@@ -495,8 +591,12 @@ export function ProductionPage() {
               <Wrench className="size-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">Bahan baku dipakai</p>
-              <p className="text-sm text-slate-600">Tambahkan bahan baku yang berkurang stoknya.</p>
+              <p className="text-sm font-semibold text-slate-900">
+                Bahan baku dipakai
+              </p>
+              <p className="text-sm text-slate-600">
+                Tambahkan bahan baku yang berkurang stoknya.
+              </p>
             </div>
           </div>
 
@@ -514,15 +614,28 @@ export function ProductionPage() {
             placeholder="Cari bahan baku"
           />
 
-          <LineTable rows={rawLines} onRemove={removeRaw} emptyText="Belum ada bahan baku." qtyLabel="Qty (pcs)" />
+          <LineTable
+            rows={rawLines}
+            onRemove={removeRaw}
+            emptyText="Belum ada bahan baku."
+            qtyLabel="Qty (pcs)"
+          />
         </section>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1 text-sm text-slate-600">
-            {submitStatus === "success" ? <span className="text-emerald-700">{submitMessage}</span> : null}
-            {submitStatus === "error" ? <span className="text-red-700">{submitMessage}</span> : null}
+            {submitStatus === "success" ? (
+              <span className="text-emerald-700">{submitMessage}</span>
+            ) : null}
+            {submitStatus === "error" ? (
+              <span className="text-red-700">{submitMessage}</span>
+            ) : null}
           </div>
-          <Button onClick={handleSubmit} disabled={submitStatus === "loading"} className="w-full sm:w-auto">
+          <Button
+            onClick={handleSubmit}
+            disabled={submitStatus === "loading"}
+            className="w-full sm:w-auto"
+          >
             <Factory className="mr-2 size-4" />
             {submitStatus === "loading" ? "Menyimpan..." : "Catat produksi"}
           </Button>
@@ -563,7 +676,9 @@ function LineComposer({
         <DropdownMenuTrigger asChild>
           <Button variant="outline" className="justify-between">
             <span className="truncate text-left">
-              {lineItem.name ? `${lineItem.code} - ${lineItem.name}` : placeholder}
+              {lineItem.name
+                ? `${lineItem.code} - ${lineItem.name}`
+                : placeholder}
             </span>
             <div className="flex items-center gap-2">
               <Search className="size-4 text-slate-500" />
@@ -580,7 +695,9 @@ function LineComposer({
               onKeyDown={(e) => {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
-                  setHighlightIndex((idx) => Math.min(idx + 1, Math.max(visibleItems.length - 1, 0)));
+                  setHighlightIndex((idx) =>
+                    Math.min(idx + 1, Math.max(visibleItems.length - 1, 0))
+                  );
                   return;
                 }
                 if (e.key === "ArrowUp") {
@@ -592,7 +709,11 @@ function LineComposer({
                   e.preventDefault();
                   const target = visibleItems[highlightIndex];
                   if (target) {
-                    setLineItem((l) => ({ ...l, code: target.code, name: target.name ?? target.code }));
+                    setLineItem((l) => ({
+                      ...l,
+                      code: target.code,
+                      name: target.name ?? target.code,
+                    }));
                     setDropdownOpen(false);
                   }
                 }
@@ -607,13 +728,20 @@ function LineComposer({
                 key={it.code}
                 className={highlightIndex === idx ? "bg-slate-100" : undefined}
                 onSelect={() => {
-                  setLineItem((l) => ({ ...l, code: it.code, name: it.name ?? it.code }));
+                  setLineItem((l) => ({
+                    ...l,
+                    code: it.code,
+                    name: it.name ?? it.code,
+                  }));
                   setDropdownOpen(false);
                 }}
               >
                 <div className="flex w-full flex-col gap-0.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-900" title={it.code}>
+                    <span
+                      className="font-semibold text-slate-900"
+                      title={it.code}
+                    >
                       {it.code}
                     </span>
                     <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
@@ -624,13 +752,17 @@ function LineComposer({
                     {it.name ?? "(Tanpa nama)"}
                   </span>
                   {it.category ? (
-                    <span className="text-[11px] text-slate-500">Kategori: {it.category}</span>
+                    <span className="text-[11px] text-slate-500">
+                      Kategori: {it.category}
+                    </span>
                   ) : null}
                 </div>
               </DropdownMenuItem>
             ))}
             {visibleItems.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-slate-500">Tidak ditemukan.</div>
+              <div className="px-3 py-4 text-sm text-slate-500">
+                Tidak ditemukan.
+              </div>
             ) : null}
           </div>
         </DropdownMenuContent>
@@ -645,7 +777,9 @@ function LineComposer({
         type="number"
         min={1}
         value={lineItem.qty}
-        onChange={(e) => setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))}
+        onChange={(e) =>
+          setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))
+        }
       />
       <Button onClick={onAdd}>
         <Plus className="size-4" />
@@ -681,7 +815,9 @@ function LineTable({
         {rows.map((line, idx) => (
           <TableRow key={line.id}>
             <TableCell className="text-slate-500">{idx + 1}</TableCell>
-            <TableCell className="font-semibold text-slate-900">{line.code}</TableCell>
+            <TableCell className="font-semibold text-slate-900">
+              {line.code}
+            </TableCell>
             <TableCell className="text-slate-800">{line.name}</TableCell>
             <TableCell className="font-semibold">{line.qty}</TableCell>
             <TableCell className="text-slate-600">{line.note || "-"}</TableCell>
@@ -699,7 +835,10 @@ function LineTable({
         ))}
         {rows.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={6} className="py-6 text-center text-sm text-slate-500">
+            <TableCell
+              colSpan={6}
+              className="py-6 text-center text-sm text-slate-500"
+            >
               {emptyText}
             </TableCell>
           </TableRow>
@@ -740,21 +879,33 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
             "pointer-events-auto shadow-lg",
             toast.variant === "destructive"
               ? "border-red-200 bg-red-50 text-red-900"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900",
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>
-          {toast.message ? <AlertDescription>{toast.message}</AlertDescription> : null}
+          {toast.message ? (
+            <AlertDescription>{toast.message}</AlertDescription>
+          ) : null}
         </Alert>
       ))}
     </div>
   );
 }
 
-function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function SummaryCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
       <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
       {sub ? <p className="text-sm text-slate-600">{sub}</p> : null}
     </div>

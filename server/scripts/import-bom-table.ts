@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { inventoryItems } from '../../client/src/components/inventory/items';
 
 const connectionString = process.env.DATABASE_URL;
@@ -51,6 +51,15 @@ const inventoryByName = new Map(
   ]),
 );
 
+async function loadProducts(client: PoolClient) {
+  const res = await client.query('SELECT code, name FROM "Product"');
+  const map = new Map<string, { code: string; name: string }>();
+  res.rows.forEach((row: { code: string; name: string }) => {
+    map.set(normalize(row.name), { code: row.code, name: row.name });
+  });
+  return map;
+}
+
 function matchInventory(component: string) {
   const norm = normalize(component);
   if (!norm) return null;
@@ -65,16 +74,22 @@ function matchInventory(component: string) {
 
 async function main() {
   const bom = loadBom();
-  const rows = Object.entries(bom).map(([name, entry]) => ({
-    productCode: name,
-    productName: name,
-    category: entry.category ?? 'Produk',
-    lines: entry.lines ?? [],
-  }));
+
+  const client = await pool.connect();
+  const productMap = await loadProducts(client);
+
+  const rows = Object.entries(bom).map(([name, entry]) => {
+    const match = productMap.get(normalize(name));
+    return {
+      productCode: match?.code ?? name,
+      productName: match?.name ?? name,
+      category: entry.category ?? 'Produk',
+      lines: entry.lines ?? [],
+    };
+  });
 
   console.log(`Preparing to upsert ${rows.length} BOM headers...`);
 
-  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('TRUNCATE "BomLine", "Bom" RESTART IDENTITY');

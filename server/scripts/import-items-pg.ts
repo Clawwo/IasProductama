@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Pool } from 'pg';
-import { inventoryItems } from '../../client/src/components/inventory/items.ts';
+import { inventoryItems } from '../../client/src/components/inventory/items';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {

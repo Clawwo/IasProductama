@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
-import { inventoryItems } from '../../client/src/components/inventory/items.ts';
+import { inventoryItems } from '../../client/src/components/inventory/items';
 
 const prisma = new PrismaClient();
 

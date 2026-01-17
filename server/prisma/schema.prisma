@@ -161,6 +161,8 @@ model ProductionFinishedLine {
   production    Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
 
   @@index([productionId])
+}
+
 model Product {
   code        String   @id
   name        String
