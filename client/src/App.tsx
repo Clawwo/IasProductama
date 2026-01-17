@@ -228,16 +228,16 @@ function App() {
     window.location.hash === "#inventory"
       ? "inventory"
       : window.location.hash === "#masuk"
-      ? "masuk"
-      : window.location.hash === "#keluar"
-      ? "keluar"
-      : window.location.hash === "#produksi"
-      ? "produksi"
-      : window.location.hash === "#drafts"
-      ? "drafts"
-      : window.location.hash === "#riwayat"
-      ? "riwayat"
-      : "dashboard"
+        ? "masuk"
+        : window.location.hash === "#keluar"
+          ? "keluar"
+          : window.location.hash === "#produksi"
+            ? "produksi"
+            : window.location.hash === "#drafts"
+              ? "drafts"
+              : window.location.hash === "#riwayat"
+                ? "riwayat"
+                : "dashboard"
   );
 
   const [email, setEmail] = useState("");
@@ -324,10 +324,7 @@ function App() {
     };
     const next = map[key] ?? "dashboard";
     setView(next);
-    const hash =
-      next === "dashboard"
-        ? "#dashboard"
-        : `#${next}`;
+    const hash = next === "dashboard" ? "#dashboard" : `#${next}`;
     window.location.hash = hash;
   };
 

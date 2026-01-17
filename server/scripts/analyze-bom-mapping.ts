@@ -50,7 +50,11 @@ function buildIndex(items: Candidate[]) {
   return byNorm;
 }
 
-function findCandidates(name: string, index: Map<string, Candidate[]>, all: Candidate[]): Candidate[] {
+function findCandidates(
+  name: string,
+  index: Map<string, Candidate[]>,
+  all: Candidate[],
+): Candidate[] {
   const norm = normalize(name);
   if (!norm) return [];
   const exact = index.get(norm);
@@ -96,8 +100,16 @@ async function main() {
     const bahan = bahanRes.rows as Array<{ code: string; name: string | null }>;
 
     const candidates: Candidate[] = [
-      ...items.map((it) => ({ code: it.code, name: it.name, source: 'ITEM' as const })),
-      ...bahan.map((it) => ({ code: it.code, name: it.name, source: 'BAHAN_BAKU' as const })),
+      ...items.map((it) => ({
+        code: it.code,
+        name: it.name,
+        source: 'ITEM' as const,
+      })),
+      ...bahan.map((it) => ({
+        code: it.code,
+        name: it.name,
+        source: 'BAHAN_BAKU' as const,
+      })),
     ];
 
     const index = buildIndex(candidates);
@@ -132,16 +144,22 @@ async function main() {
       else none.push(p);
     }
 
-    console.log(JSON.stringify({
-      summary: {
-        totalMissing: proposals.length,
-        confident: confident.length,
-        ambiguous: ambiguous.length,
-        none: none.length,
-      },
-      ambiguous,
-      none,
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          summary: {
+            totalMissing: proposals.length,
+            confident: confident.length,
+            ambiguous: ambiguous.length,
+            none: none.length,
+          },
+          ambiguous,
+          none,
+        },
+        null,
+        2,
+      ),
+    );
   } finally {
     client.release();
   }

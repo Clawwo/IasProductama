@@ -35,7 +35,12 @@ function slugify(text: string) {
 function generateCode(name: string) {
   const slug = slugify(name) || 'AUTO';
   const short = slug.slice(0, 18).toUpperCase();
-  const hash = crypto.createHash('md5').update(slug).digest('hex').slice(0, 6).toUpperCase();
+  const hash = crypto
+    .createHash('md5')
+    .update(slug)
+    .digest('hex')
+    .slice(0, 6)
+    .toUpperCase();
   return `BB-AUTO-${short}-${hash}`;
 }
 
@@ -65,7 +70,10 @@ async function main() {
     const assignments = new Map<string, { code: string; source: Source }>();
     const newMaterials: Array<{ code: string; name: string }> = [];
 
-    for (const row of missingRes.rows as Array<{ id: string; name: string | null }>) {
+    for (const row of missingRes.rows as Array<{
+      id: string;
+      name: string | null;
+    }>) {
       const norm = normalize(row.name);
       if (!norm) continue;
 
@@ -104,12 +112,19 @@ async function main() {
     if (missingRes.rowCount) {
       const updates: Array<{ id: string; code: string; source: Source }> = [];
 
-      for (const row of missingRes.rows as Array<{ id: string; name: string | null }>) {
+      for (const row of missingRes.rows as Array<{
+        id: string;
+        name: string | null;
+      }>) {
         const norm = normalize(row.name);
         if (!norm) continue;
         const assignment = assignments.get(norm) || existing.get(norm);
         if (!assignment) continue;
-        updates.push({ id: row.id, code: assignment.code, source: assignment.source });
+        updates.push({
+          id: row.id,
+          code: assignment.code,
+          source: assignment.source,
+        });
       }
 
       if (updates.length) {

@@ -44,7 +44,9 @@ async function deleteProductItems() {
       },
     });
 
-    console.log(`✅ Dihapus ${deletedBahanBaku.count} item dari tabel BahanBaku`);
+    console.log(
+      `✅ Dihapus ${deletedBahanBaku.count} item dari tabel BahanBaku`,
+    );
 
     console.log('✨ Selesai! Data produk sudah dibersihkan.');
     return 0;

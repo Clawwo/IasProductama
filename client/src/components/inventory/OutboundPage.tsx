@@ -282,7 +282,7 @@ export function OutboundPage() {
       .map((it) => ({
         code: it.code,
         name: it.name ?? it.code,
-        category: it.category ?? 'Bahan Baku',
+        category: it.category ?? "Bahan Baku",
         subCategory: it.subCategory,
         kind: it.kind ?? it.subCategory,
         stock: it.stock ?? 0,
