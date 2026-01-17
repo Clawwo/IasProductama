@@ -9,6 +9,8 @@ import { ItemsModule } from './items/items.module.js';
 import { OutboundModule } from './outbound/outbound.module.js';
 import { DraftsModule } from './drafts/drafts.module.js';
 import { RawMaterialsModule } from './raw-materials/raw-materials.module.js';
+import { ProductionModule } from './production/production.module.js';
+import { BomModule } from './bom/bom.module.js';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { RawMaterialsModule } from './raw-materials/raw-materials.module.js';
     ItemsModule,
     DraftsModule,
     RawMaterialsModule,
+    ProductionModule,
+    BomModule,
   ],
   controllers: [AppController],
   providers: [AppService],

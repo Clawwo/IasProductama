@@ -12,6 +12,7 @@ import {
 import { DraftsPage } from "./components/drafts/DraftsPage";
 import { RiwayatPage } from "./components/history/RiwayatPage";
 import { RawMaterialsPage } from "./components/raw/RawMaterialsPage";
+import { ProductionPage } from "./components/production/ProductionPage";
 import {
   Sidebar,
   SidebarContent,
@@ -49,6 +50,7 @@ import {
   History,
   LayoutDashboard,
   Box,
+  Factory,
 } from "lucide-react";
 import { queryClient } from "./lib/react-query";
 
@@ -58,6 +60,7 @@ type View =
   | "raw"
   | "masuk"
   | "keluar"
+  | "produksi"
   | "drafts"
   | "riwayat";
 
@@ -93,6 +96,12 @@ function SidebarNav({
       label: "Barang Keluar",
       icon: ArrowUpRight,
       href: "#keluar",
+    },
+    {
+      key: "produksi",
+      label: "Produksi",
+      icon: Factory,
+      href: "#produksi",
     },
     { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
@@ -227,6 +236,8 @@ function App() {
       ? "masuk"
       : window.location.hash === "#keluar"
       ? "keluar"
+      : window.location.hash === "#produksi"
+      ? "produksi"
       : window.location.hash === "#drafts"
       ? "drafts"
       : window.location.hash === "#riwayat"
@@ -256,6 +267,8 @@ function App() {
         setView("masuk");
       } else if (window.location.hash === "#keluar") {
         setView("keluar");
+      } else if (window.location.hash === "#produksi") {
+        setView("produksi");
       } else if (window.location.hash === "#drafts") {
         setView("drafts");
       } else if (window.location.hash === "#riwayat") {
@@ -313,6 +326,7 @@ function App() {
       raw: "raw",
       masuk: "masuk",
       keluar: "keluar",
+      produksi: "produksi",
       drafts: "drafts",
       riwayat: "riwayat",
     };
@@ -474,6 +488,21 @@ function App() {
         logoutLoading={logoutMutation.isPending}
       >
         <RiwayatPage />
+      </Shell>
+    );
+  }
+
+  if (view === "produksi") {
+    return (
+      <Shell
+        title="Produksi"
+        view={view}
+        userEmail={user?.email}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        <ProductionPage />
       </Shell>
     );
   }
