@@ -59,25 +59,65 @@ export class OutboundService {
       });
 
       for (const line of dto.lines) {
-        const existing = await tx.item.findUnique({
+        const existingItem = await tx.item.findUnique({
           where: { code: line.code },
         });
-        if (!existing || existing.stock < line.qty) {
+        const existingRaw = existingItem
+          ? null
+          : await tx.bahanBaku.findUnique({ where: { code: line.code } });
+        const existingProduct =
+          existingItem || existingRaw
+            ? null
+            : await tx.product.findUnique({ where: { code: line.code } });
+
+        const target = existingItem ?? existingRaw ?? existingProduct;
+        if (!target) {
           throw new BadRequestException(
-            `Stok untuk ${line.code} tidak cukup. Sisa: ${existing?.stock ?? 0}`,
+            `Kode ${line.code} tidak ditemukan di Item/Bahan Baku/Produk`,
           );
         }
 
-        await tx.item.update({
-          where: { code: line.code },
-          data: {
-            stock: { decrement: line.qty },
-            name: line.name ?? undefined,
-            category: line.category ?? undefined,
-            subCategory: line.subCategory ?? undefined,
-            kind: line.kind ?? undefined,
-          },
-        });
+        if ((target.stock ?? 0) < line.qty) {
+          throw new BadRequestException(
+            `Stok untuk ${line.code} tidak cukup. Sisa: ${target.stock ?? 0}`,
+          );
+        }
+
+        if (existingItem) {
+          await tx.item.update({
+            where: { code: line.code },
+            data: {
+              stock: { decrement: line.qty },
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+            },
+          });
+        } else if (existingRaw) {
+          await tx.bahanBaku.update({
+            where: { code: line.code },
+            data: {
+              stock: { decrement: line.qty },
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+            },
+          });
+        } else if (existingProduct) {
+          await tx.product.update({
+            where: { code: line.code },
+            data: {
+              stock: { decrement: line.qty },
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              size: line.kind ?? undefined,
+              // color intentionally left untouched
+            },
+          });
+        }
       }
 
       return outbound;

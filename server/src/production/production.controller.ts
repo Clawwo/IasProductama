@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ProductionService } from './production.service.js';
 import { CreateProductionDto } from './dto/create-production.dto.js';
 
-@Controller('api/production')
+@Controller('production')
 export class ProductionController {
   constructor(private readonly productionService: ProductionService) {}
 

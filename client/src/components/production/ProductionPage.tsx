@@ -19,12 +19,11 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calendar, Factory, Plus, Search, StickyNote, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { inventoryItemsWithKind } from "../inventory/items";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "").trim();
 const PRODUCTION_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/production`;
-const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
+const PRODUCTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/products`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const BOM_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/bom`;
 
@@ -94,7 +93,7 @@ export function ProductionPage() {
   const [finishedDropdownOpen, setFinishedDropdownOpen] = useState(false);
   const [rawDropdownOpen, setRawDropdownOpen] = useState(false);
 
-  const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
+  const [products, setProducts] = useState<RemoteItem[]>([]);
   const [rawItems, setRawItems] = useState<RemoteItem[]>([]);
   const [bomCache, setBomCache] = useState<Record<string, BomEntry>>({});
 
@@ -108,12 +107,12 @@ export function ProductionPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [itemsRes, rawRes] = await Promise.all([fetch(ITEMS_URL), fetch(RAW_URL)]);
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
+      const [prodRes, rawRes] = await Promise.all([fetch(PRODUCTS_URL), fetch(RAW_URL)]);
+      if (!prodRes.ok) throw new Error(await prodRes.text());
       if (!rawRes.ok) throw new Error(await rawRes.text());
-      const itemsData = (await itemsRes.json()) as RemoteItem[];
+      const itemsData = (await prodRes.json()) as RemoteItem[];
       const rawData = (await rawRes.json()) as RemoteItem[];
-      setRemoteItems(itemsData);
+      setProducts(itemsData);
       setRawItems(rawData);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Tidak bisa memuat data.";
@@ -133,33 +132,14 @@ export function ProductionPage() {
     return map;
   }, [rawItems]);
 
-  const mergedFinishedItems = useMemo(() => {
-    const stockMap = new Map(remoteItems.map((it) => [it.code, it]));
-    const baseCodes = new Set(inventoryItemsWithKind.map((it) => it.code));
-    const base = inventoryItemsWithKind.map((it) => {
-      const api = stockMap.get(it.code);
-      return {
-        ...it,
-        stock: api?.stock ?? it.stock ?? 0,
-        category: api?.category ?? it.category,
-        subCategory: api?.subCategory ?? it.subCategory,
-        kind: api?.kind ?? it.kind,
-      } as RemoteItem & { category?: string; subCategory?: string; kind?: string };
-    });
-
-    const extra = remoteItems.filter((it) => !baseCodes.has(it.code));
-    return [...base, ...extra];
-  }, [remoteItems]);
+  const mergedFinishedItems = useMemo(() => products, [products]);
 
   const finishedFiltered = useMemo(() => {
     const term = finishedSearch.toLowerCase();
-    const allowedCats = new Set(["produk"]);
-    const list = mergedFinishedItems
-      .filter((it) => allowedCats.has(normalize(it.category)))
-      .filter((it) => {
-        if (!term) return true;
-        return it.code.toLowerCase().includes(term) || (it.name ?? "").toLowerCase().includes(term);
-      });
+    const list = mergedFinishedItems.filter((it) => {
+      if (!term) return true;
+      return it.code.toLowerCase().includes(term) || (it.name ?? "").toLowerCase().includes(term);
+    });
     return list.slice(0, 50);
   }, [mergedFinishedItems, finishedSearch]);
 
