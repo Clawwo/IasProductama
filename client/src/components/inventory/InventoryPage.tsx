@@ -46,6 +46,7 @@ import {
   Palette,
   CircleDot,
   Ruler,
+  Package,
   PackageSearch,
   PencilLine,
   Plus,
@@ -60,10 +61,14 @@ import {
 } from "./items";
 
 type Env = { VITE_API_BASE?: string };
-const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
+const API_BASE = (
+  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? "http://localhost:3000"
+)
   .trim()
   .replace(/\/$/, "");
 const ITEMS_URL = `${API_BASE}/api/items`;
+const RAW_URL = `${API_BASE}/api/raw-materials`;
+const PRODUCTS_URL = `${API_BASE}/api/products`;
 
 type RemoteItem = {
   code: string;
@@ -104,18 +109,55 @@ export function InventoryPage() {
   const [ringSize, setRingSize] = useState<string>("all");
   const [ringColor, setRingColor] = useState<string>("all");
   const [ringHoles, setRingHoles] = useState<string>("all");
+  const [productSubCategory, setProductSubCategory] = useState<
+    "all" | "DRUMBAND" | "HTS" | "SEMI"
+  >("all");
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(ITEMS_URL);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as RemoteItem[];
+      const [itemsRes, rawRes, productsRes] = await Promise.all([
+        fetch(ITEMS_URL),
+        fetch(RAW_URL),
+        fetch(PRODUCTS_URL),
+      ]);
+
+      if (!itemsRes.ok) throw new Error(await itemsRes.text());
+      if (!rawRes.ok) throw new Error(await rawRes.text());
+      if (!productsRes.ok) throw new Error(await productsRes.text());
+
+      const [itemsData, rawData, productsData] = (await Promise.all([
+        itemsRes.json(),
+        rawRes.json(),
+        productsRes.json(),
+      ])) as [RemoteItem[], RemoteItem[], RemoteItem[]];
+
+      const remoteMerged = [
+        ...itemsData,
+        ...rawData.filter((raw) => !itemsData.some((it) => it.code === raw.code)),
+        ...productsData
+          .filter(
+            (prod) =>
+              !itemsData.some((it) => it.code === prod.code) &&
+              !rawData.some((raw) => raw.code === prod.code)
+          )
+          .map((prod) => {
+            // Normalisasi kategori DRUMBAND/HTS/SEMI menjadi Produk
+            if (prod.category === "DRUMBAND" || prod.category === "HTS" || prod.category === "SEMI") {
+              return {
+                ...prod,
+                subCategory: prod.category,
+                category: "Produk",
+              };
+            }
+            return prod;
+          }),
+      ];
       const staticMap = new Map(
         inventoryItemsWithKind.map((base) => [base.code, base])
       );
-      const fromApi = data.map((it) => {
+      const fromApi = remoteMerged.map((it) => {
         const base = staticMap.get(it.code);
         const merged = {
           ...base,
@@ -133,10 +175,7 @@ export function InventoryPage() {
             inferKind(merged),
         };
       });
-      const missingStatic = inventoryItemsWithKind
-        .filter((base) => !fromApi.some((api) => api.code === base.code))
-        .map((base) => ({ ...base, stock: 0 }));
-      setItems([...fromApi, ...missingStatic]);
+      setItems(fromApi);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Gagal memuat data.";
       setError(message);
@@ -186,6 +225,11 @@ export function InventoryPage() {
         !isRing ||
         ringHoles === "all" ||
         (ringItemHoles && ringItemHoles === ringHoles);
+      const isProduct = item.category === "Produk";
+      const matchProductSub =
+        !isProduct ||
+        productSubCategory === "all" ||
+        item.subCategory === productSubCategory;
       return (
         matchText &&
         matchCategory &&
@@ -193,7 +237,8 @@ export function InventoryPage() {
         matchRingSub &&
         matchRingSize &&
         matchRingColor &&
-        matchRingHoles
+        matchRingHoles &&
+        matchProductSub
       );
     });
   }, [
@@ -205,6 +250,7 @@ export function InventoryPage() {
     ringSize,
     ringColor,
     ringHoles,
+    productSubCategory,
   ]);
 
   const totalItems = filtered.length;
@@ -550,6 +596,7 @@ export function InventoryPage() {
                 setRingSize("all");
                 setRingColor("all");
                 setRingHoles("all");
+                setProductSubCategory("all");
               }}
             >
               Reset
@@ -669,6 +716,43 @@ export function InventoryPage() {
                     {size}"
                   </DropdownMenuItem>
                 ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : null}
+
+        {selectedCategories.includes("Produk") ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Filter Produk
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={productSubCategory === "all" ? "ghost" : "default"}
+                  className="h-9 px-3"
+                >
+                  <Package className="mr-2 h-4 w-4" />
+                  {productSubCategory === "all"
+                    ? "Jenis"
+                    : productSubCategory}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-40">
+                <DropdownMenuLabel>Jenis Produk</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setProductSubCategory("all")}>
+                  Semua
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setProductSubCategory("DRUMBAND")}>
+                  DRUMBAND
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setProductSubCategory("HTS")}>
+                  HTS
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setProductSubCategory("SEMI")}>
+                  SEMI
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

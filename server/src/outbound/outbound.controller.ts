@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { OutboundService } from './outbound.service.js';
 import { CreateOutboundDto } from './dto/create-outbound.dto.js';
 
-@Controller('api/outbound')
+@Controller('outbound')
 export class OutboundController {
   constructor(private readonly outboundService: OutboundService) {}
 
