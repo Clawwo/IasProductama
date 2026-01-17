@@ -11,7 +11,7 @@ import { RawMaterialsService } from './raw-materials.service.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
 import { UpdateRawMaterialDto } from './dto/update-raw-material.dto.js';
 
-@Controller('api/raw-materials')
+@Controller('raw-materials')
 export class RawMaterialsController {
   constructor(private readonly rawMaterialsService: RawMaterialsService) {}
 

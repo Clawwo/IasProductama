@@ -15,7 +15,7 @@ import { DraftsService } from './drafts.service.js';
 import { CreateDraftDto } from './dto/create-draft.dto.js';
 import { UpdateDraftDto } from './dto/update-draft.dto.js';
 
-@Controller('api/drafts')
+@Controller('drafts')
 export class DraftsController {
   constructor(private readonly draftsService: DraftsService) {}
 

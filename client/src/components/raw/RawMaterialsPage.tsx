@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -20,7 +21,27 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowDownUp, Download, Filter, RefreshCw, Search } from "lucide-react";
+import {
+  Pagination as Pager,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
+  ArrowDownUp,
+  Boxes,
+  EllipsisVertical,
+  Download,
+  Filter,
+  Layers3,
+  PencilLine,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -46,16 +67,62 @@ export function RawMaterialsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 15;
   const [sortKey, setSortKey] = useState<"code" | "name" | "stock">("code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [statusFilter, setStatusFilter] = useState<"" | StockStatus>("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>([]);
+  const [bahanSubCategories, setBahanSubCategories] = useState<string[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<(typeof rows)[number] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<(typeof rows)[number] | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    code: "",
+    name: "",
+    category: "",
+    subCategory: "",
+    kind: "",
+    stock: 0,
+  });
 
   const categories = useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => r.category && set.add(r.category));
     return Array.from(set).sort();
   }, [rows]);
+
+  const subCategories = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.subCategory && set.add(r.subCategory));
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const subCategoriesByCategory = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    rows.forEach((r) => {
+      if (r.category && r.subCategory) {
+        const set = map.get(r.category) ?? new Set<string>();
+        set.add(r.subCategory);
+        map.set(r.category, set);
+      }
+    });
+    return map;
+  }, [rows]);
+
+  const bahanBakuSubOptions = useMemo(() => {
+    return Array.from(subCategoriesByCategory.get("Bahan Baku") ?? []).sort();
+  }, [subCategoriesByCategory]);
+
+  useEffect(() => {
+    if (!selectedCategories.includes("Bahan Baku")) {
+      setBahanSubCategories([]);
+    }
+  }, [selectedCategories]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,14 +164,127 @@ export function RawMaterialsPage() {
       const catMatch =
         selectedCategories.length === 0 ||
         (r.category && selectedCategories.includes(r.category));
-      return textMatch && statusMatch && catMatch;
+      const subCatMatch =
+        selectedSubCategories.length === 0 ||
+        (r.subCategory && selectedSubCategories.includes(r.subCategory));
+      const bahanFilterActive =
+        selectedCategories.includes("Bahan Baku") && bahanSubCategories.length > 0;
+      const bahanSubMatch =
+        !bahanFilterActive ||
+        r.category !== "Bahan Baku" ||
+        (r.subCategory && bahanSubCategories.includes(r.subCategory));
+      return textMatch && statusMatch && catMatch && subCatMatch && bahanSubMatch;
     });
-  }, [rows, search, sortDir, sortKey, statusFilter, selectedCategories]);
+  }, [
+    rows,
+    search,
+    sortDir,
+    sortKey,
+    statusFilter,
+    selectedCategories,
+    selectedSubCategories,
+    bahanSubCategories,
+  ]);
 
   const totalStock = useMemo(
     () => filtered.reduce((sum, r) => sum + r.stock, 0),
     [filtered]
   );
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const currentPage = Math.min(page, totalPages);
+  const paged = useMemo(() => {
+    const start = (currentPage - 1) * perPage;
+    return filtered.slice(start, start + perPage);
+  }, [filtered, currentPage]);
+
+  function openAddForm() {
+    setEditing(null);
+    setForm({ code: "", name: "", category: "", subCategory: "", kind: "", stock: 0 });
+    setFormError(null);
+    setShowForm(true);
+  }
+
+  function openEditForm(row: (typeof rows)[number]) {
+    setEditing(row);
+    setForm({
+      code: row.code,
+      name: row.name ?? "",
+      category: row.category ?? "",
+      subCategory: row.subCategory ?? "",
+      kind: row.kind ?? "",
+      stock: row.stock,
+    });
+    setFormError(null);
+    setShowForm(true);
+  }
+
+  async function saveForm() {
+    setFormError(null);
+    if (!form.code.trim() || !form.name.trim()) {
+      setFormError("Kode dan nama wajib diisi.");
+      return;
+    }
+    if (form.stock < 0) {
+      setFormError("Stok tidak boleh negatif.");
+      return;
+    }
+
+    const payload = {
+      code: form.code.trim(),
+      name: form.name.trim(),
+      category: form.category.trim() || undefined,
+      subCategory: form.subCategory.trim() || undefined,
+      kind: form.kind.trim() || undefined,
+      stock: form.stock,
+    };
+
+    setSaving(true);
+    try {
+      const targetUrl = editing
+        ? `${RAW_URL}/${encodeURIComponent(editing.code)}`
+        : RAW_URL;
+      const res = await fetch(targetUrl, {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+      setShowForm(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal menyimpan.";
+      setFormError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteItem(code: string) {
+    setDeleting(true);
+    try {
+      const res = await fetch(`${RAW_URL}/${encodeURIComponent(code)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal menghapus.";
+      setError(message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    await deleteItem(pendingDelete.code);
+    setPendingDelete(null);
+  }
+
+  function onCloseForm() {
+    setShowForm(false);
+  }
 
   function StatusTab({
     label,
@@ -210,20 +390,36 @@ export function RawMaterialsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
             Daftar bahan baku produksi
           </p>
           <h1 className="text-2xl font-semibold leading-tight">Barang Baku</h1>
-          <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
-            <Badge variant="secondary" className="rounded-full px-3">
-              {filtered.length} item
-            </Badge>
-            <Badge variant="secondary" className="rounded-full px-3">
-              {totalStock} stok total
-            </Badge>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-sky-50 text-sky-600">
+                <Boxes className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Total item
+                </p>
+                <p className="text-lg font-semibold text-slate-900">{totalItems}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+                <Layers3 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Total stok
+                </p>
+                <p className="text-lg font-semibold text-slate-900">{totalStock}</p>
+              </div>
+            </div>
           </div>
         </div>
         <div className="flex gap-2">
@@ -234,6 +430,10 @@ export function RawMaterialsPage() {
           <Button onClick={exportCsv} disabled={filtered.length === 0}>
             <Download className="mr-2 size-4" />
             Export CSV
+          </Button>
+          <Button className="bg-sky-600 text-white hover:bg-sky-700" onClick={openAddForm}>
+            <Plus className="mr-2 size-4" />
+            Tambah Barang
           </Button>
         </div>
       </div>
@@ -287,6 +487,92 @@ export function RawMaterialsPage() {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" /> Subkategori
+                  {selectedSubCategories.length > 0
+                    ? `(${selectedSubCategories.length})`
+                    : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuLabel>Pilih subkategori</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedSubCategories.length === 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) setSelectedSubCategories([]);
+                  }}
+                >
+                  Semua subkategori
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {(selectedCategories.length === 0
+                  ? subCategories
+                  : Array.from(
+                      new Set(
+                        selectedCategories.flatMap((cat) =>
+                          Array.from(subCategoriesByCategory.get(cat) ?? [])
+                        )
+                      )
+                    ).sort()
+                ).map((cat) => (
+                  <DropdownMenuCheckboxItem
+                    key={cat}
+                    checked={selectedSubCategories.includes(cat)}
+                    onCheckedChange={(checked) => {
+                      setSelectedSubCategories((prev) => {
+                        if (checked) return [...prev, cat];
+                        return prev.filter((c) => c !== cat);
+                      });
+                    }}
+                  >
+                    {cat}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {selectedCategories.includes("Bahan Baku") ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Filter className="size-4" /> Subkategori Bahan Baku
+                    {bahanSubCategories.length > 0
+                      ? `(${bahanSubCategories.length})`
+                      : ""}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-56">
+                  <DropdownMenuLabel>Pilih subkategori (Bahan Baku)</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={bahanSubCategories.length === 0}
+                    onCheckedChange={(checked) => {
+                      if (checked) setBahanSubCategories([]);
+                    }}
+                  >
+                    Semua subkategori
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuSeparator />
+                  {bahanBakuSubOptions.map((sub) => (
+                    <DropdownMenuCheckboxItem
+                      key={sub}
+                      checked={bahanSubCategories.includes(sub)}
+                      onCheckedChange={(checked) => {
+                        setBahanSubCategories((prev) => {
+                          if (checked) return [...prev, sub];
+                          return prev.filter((c) => c !== sub);
+                        });
+                      }}
+                    >
+                      {sub}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
             <div className="flex items-center gap-2 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
               <StatusTab
                 label="Semua"
@@ -319,6 +605,7 @@ export function RawMaterialsPage() {
           <Table>
             <TableHeader className="bg-slate-100">
               <TableRow>
+                <TableHead className="w-12 font-semibold text-slate-800">No</TableHead>
                 <TableHead className="font-semibold text-slate-800">
                   <button
                     className="inline-flex items-center gap-1"
@@ -335,28 +622,16 @@ export function RawMaterialsPage() {
                     Nama
                   </button>
                 </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Kategori
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Subkategori
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Jenis
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Status
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800 text-right">
-                  Stok
-                </TableHead>
+                <TableHead className="font-semibold text-slate-800">Status</TableHead>
+                <TableHead className="font-semibold text-slate-800 text-right">Stok</TableHead>
+                <TableHead className="font-semibold text-slate-800 text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat data...
@@ -365,7 +640,7 @@ export function RawMaterialsPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -374,49 +649,223 @@ export function RawMaterialsPage() {
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data.
                   </TableCell>
                 </TableRow>
               ) : (
-                filtered.map((row) => (
-                  <TableRow key={row.code} className="odd:bg-slate-50">
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {row.code}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{row.name ?? row.code}</div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.category ?? "-"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.subCategory ?? "-"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.kind ?? "-"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={getStatus(row.stock)} />
-                    </TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {row.stock}
-                    </TableCell>
-                  </TableRow>
-                ))
+                paged.map((row, idx) => {
+                  const rowNumber = (currentPage - 1) * perPage + idx + 1;
+                  return (
+                    <TableRow key={row.code} className="odd:bg-slate-50">
+                      <TableCell className="text-slate-500">{rowNumber}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {row.code}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{row.name ?? row.code}</div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={getStatus(row.stock)} />
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {row.stock}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <ActionsMenu
+                          onEdit={() => openEditForm(row)}
+                          onDelete={() => setPendingDelete(row)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
         </div>
         <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-          <span>Menampilkan {Math.min(filtered.length, rows.length)} data</span>
-          <Badge variant="secondary" className="rounded-full px-3">
-            {filtered.length} hasil
-          </Badge>
+          <span>
+            Halaman <span className="font-semibold text-slate-900">{currentPage}</span> dari {totalPages}
+          </span>
+          <Pager className="justify-end gap-2">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage > 1) setPage(currentPage - 1);
+                  }}
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationLink href="#" isActive size="default">
+                  {currentPage}
+                </PaginationLink>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage < totalPages) setPage(currentPage + 1);
+                  }}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pager>
         </div>
       </div>
+      {pendingDelete ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-semibold text-slate-900">Hapus barang?</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Barang <span className="font-semibold">{pendingDelete.name ?? pendingDelete.code}</span> akan dihapus.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+                Batal
+              </Button>
+              <Button
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Menghapus..." : "Hapus"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  {editing ? "Edit" : "Tambah"} Barang
+                </p>
+                <h2 className="font-heading text-2xl text-slate-900">
+                  {editing ? "Ubah Barang" : "Barang Baru"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-800"
+                onClick={onCloseForm}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Kode</label>
+                <Input
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  placeholder="Kode unik"
+                  className="h-11"
+                  disabled={!!editing}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Nama</label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Nama barang"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Kategori</label>
+                <Input
+                  value={form.category}
+                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  placeholder="Kategori"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Subkategori</label>
+                <Input
+                  value={form.subCategory}
+                  onChange={(e) => setForm((f) => ({ ...f, subCategory: e.target.value }))}
+                  placeholder="Subkategori"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Jenis</label>
+                <Input
+                  value={form.kind}
+                  onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}
+                  placeholder="Jenis (opsional)"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">Stok</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.stock}
+                  onChange={(e) => setForm((f) => ({ ...f, stock: Number(e.target.value) }))}
+                  className="h-11"
+                />
+              </div>
+              {formError ? (
+                <p className="text-sm text-red-600">{formError}</p>
+              ) : null}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="secondary" onClick={onCloseForm}>
+                  Batal
+                </Button>
+                <Button
+                  className="bg-sky-600 text-white hover:bg-sky-700"
+                  onClick={saveForm}
+                  disabled={saving}
+                >
+                  {saving ? "Menyimpan..." : "Simpan"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function ActionsMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="h-9 w-9 border border-slate-200 bg-white p-0 text-slate-600 shadow-sm hover:bg-slate-50"
+        >
+          <EllipsisVertical className="h-5 w-5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onEdit} className="text-slate-700">
+          <PencilLine className="h-4 w-4 text-sky-600" />
+          Edit
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+          <Trash2 className="h-4 w-4" />
+          Hapus
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

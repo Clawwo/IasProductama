@@ -99,6 +99,18 @@ model BahanBaku {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+model Product {
+  code        String   @id
+  name        String
+  category    String
+  subCategory String?
+  size        String?
+  color       String?
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
 model Draft {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type      DraftType
