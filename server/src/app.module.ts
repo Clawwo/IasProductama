@@ -11,6 +11,7 @@ import { DraftsModule } from './drafts/drafts.module.js';
 import { RawMaterialsModule } from './raw-materials/raw-materials.module.js';
 import { ProductionModule } from './production/production.module.js';
 import { BomModule } from './bom/bom.module.js';
+import { ProductsModule } from './products/products.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { BomModule } from './bom/bom.module.js';
     RawMaterialsModule,
     ProductionModule,
     BomModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

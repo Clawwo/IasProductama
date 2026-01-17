@@ -161,6 +161,16 @@ model ProductionFinishedLine {
   production    Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
 
   @@index([productionId])
+model Product {
+  code        String   @id
+  name        String
+  category    String
+  subCategory String?
+  size        String?
+  color       String?
+  stock       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model Draft {

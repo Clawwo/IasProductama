@@ -26,7 +26,7 @@ export type InventoryItem = {
   name: string;
   stock: number;
   category: string;
-  subCategory?: "SNARE" | "TOM";
+  subCategory?: "SNARE" | "TOM" | "DRUMBAND" | "HTS" | "SEMI";
   kind?: InventoryKind;
 };
 
@@ -122,7 +122,7 @@ export const inventoryItems: InventoryItem[] = [
   { code: "ACC-GEN-00-STD6", name: "Stick Tenor", stock: 5, category: "Acc" },
   {
     code: "ACC-GEN-00-STD7",
-    name: "Strainer Drumband",
+    name: "Strainer git ",
     stock: 5,
     category: "Acc",
   },

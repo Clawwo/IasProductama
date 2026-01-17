@@ -57,7 +57,6 @@ import { queryClient } from "./lib/react-query";
 type View =
   | "dashboard"
   | "inventory"
-  | "raw"
   | "masuk"
   | "keluar"
   | "produksi"
@@ -84,7 +83,6 @@ function SidebarNav({
       href: "#dashboard",
     },
     { key: "inventory", label: "Inventory", icon: Box, href: "#inventory" },
-    { key: "raw", label: "Bahan Baku", icon: Box, href: "#bahan-baku" },
     {
       key: "masuk",
       label: "Barang Masuk",
@@ -230,8 +228,6 @@ function App() {
   const [view, setView] = useState<View>(() =>
     window.location.hash === "#inventory"
       ? "inventory"
-      : window.location.hash === "#bahan-baku"
-      ? "raw"
       : window.location.hash === "#masuk"
       ? "masuk"
       : window.location.hash === "#keluar"
@@ -261,8 +257,6 @@ function App() {
     const onHashChange = () => {
       if (window.location.hash === "#inventory") {
         setView("inventory");
-      } else if (window.location.hash === "#bahan-baku") {
-        setView("raw");
       } else if (window.location.hash === "#masuk") {
         setView("masuk");
       } else if (window.location.hash === "#keluar") {
@@ -323,7 +317,6 @@ function App() {
     const map: Record<AppNavKey, View> = {
       dashboard: "dashboard",
       inventory: "inventory",
-      raw: "raw",
       masuk: "masuk",
       keluar: "keluar",
       produksi: "produksi",
@@ -335,8 +328,6 @@ function App() {
     const hash =
       next === "dashboard"
         ? "#dashboard"
-        : next === "raw"
-        ? "#bahan-baku"
         : `#${next}`;
     window.location.hash = hash;
   };
@@ -428,21 +419,6 @@ function App() {
         logoutLoading={logoutMutation.isPending}
       >
         <InventoryPage />
-      </Shell>
-    );
-  }
-
-  if (view === "raw") {
-    return (
-      <Shell
-        title="Bahan Baku"
-        view={view}
-        userEmail={user?.email}
-        onNavigate={handleNavigate}
-        onLogout={() => logoutMutation.mutate()}
-        logoutLoading={logoutMutation.isPending}
-      >
-        <RawMaterialsPage />
       </Shell>
     );
   }
