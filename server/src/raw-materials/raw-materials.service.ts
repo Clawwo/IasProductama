@@ -1,7 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
+import { CreateRawMaterialOutboundDto } from './dto/create-raw-material-outbound.dto.js';
+import { ReceiveRawMaterialOutboundLineDto } from './dto/receive-raw-material-outbound-line.dto.js';
 import { UpdateRawMaterialDto } from './dto/update-raw-material.dto.js';
+
+function startOfDay(value: Date) {
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatTxnCode(prefix: string, date: Date, sequence: number) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${prefix}-${yyyy}${mm}${dd}-${String(sequence).padStart(4, '0')}`;
+}
 
 @Injectable()
 export class RawMaterialsService {
@@ -53,5 +68,121 @@ export class RawMaterialsService {
     if (!exists) throw new NotFoundException('Raw material not found');
     await this.prisma.bahanBaku.delete({ where: { code } });
     return { success: true };
+  }
+
+  async findOutboundRecent(limit = 20) {
+    const take =
+      Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    return this.prisma.rawMaterialOutbound.findMany({
+      take,
+      orderBy: { date: 'desc' },
+      include: { lines: { orderBy: { createdAt: 'asc' } } },
+    });
+  }
+
+  async createOutbound(dto: CreateRawMaterialOutboundDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const date = new Date(dto.date);
+      const dayStart = startOfDay(date);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const sameDayCount = await tx.rawMaterialOutbound.count({
+        where: { date: { gte: dayStart, lt: dayEnd } },
+      });
+      const code = formatTxnCode('RM-OUT', dayStart, sameDayCount + 1);
+
+      for (const line of dto.lines) {
+        const existing = await tx.bahanBaku.findUnique({
+          where: { code: line.code },
+        });
+        if (!existing) {
+          throw new BadRequestException(
+            `Bahan baku ${line.code} tidak ditemukan.`,
+          );
+        }
+        if ((existing.stock ?? 0) < line.qty) {
+          throw new BadRequestException(
+            `Stok bahan baku ${line.code} tidak cukup. Sisa: ${existing.stock ?? 0}`,
+          );
+        }
+
+        await tx.bahanBaku.update({
+          where: { code: line.code },
+          data: {
+            stock: { decrement: line.qty },
+            name: line.name ?? undefined,
+            category: line.category ?? undefined,
+            subCategory: line.subCategory ?? undefined,
+            kind: line.kind ?? undefined,
+          },
+        });
+      }
+
+      return tx.rawMaterialOutbound.create({
+        data: {
+          code,
+          artisan: dto.artisan,
+          date,
+          note: dto.note,
+          lines: {
+            create: dto.lines.map((line) => ({
+              materialCode: line.code,
+              materialName: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+              batchCode: line.batchCode,
+              qty: line.qty,
+              note: line.note,
+            })),
+          },
+        },
+        include: { lines: { orderBy: { createdAt: 'asc' } } },
+      });
+    });
+  }
+
+  async receiveOutboundLine(
+    lineId: string,
+    dto: ReceiveRawMaterialOutboundLineDto,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const line = await tx.rawMaterialOutboundLine.findUnique({
+        where: { id: lineId },
+      });
+
+      if (!line) {
+        throw new NotFoundException('Tracking bahan baku tidak ditemukan');
+      }
+
+      if (line.status === 'RECEIVED') {
+        return line;
+      }
+
+      const receivedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
+
+      const updated = await tx.rawMaterialOutboundLine.update({
+        where: { id: lineId },
+        data: {
+          status: 'RECEIVED',
+          receivedAt,
+          receivedBy: dto.receivedBy,
+        },
+      });
+
+      const remaining = await tx.rawMaterialOutboundLine.count({
+        where: { outboundId: line.outboundId, status: 'OUT' },
+      });
+
+      if (remaining === 0) {
+        await tx.rawMaterialOutbound.update({
+          where: { id: line.outboundId },
+          data: { status: 'RECEIVED', receivedAt },
+        });
+      }
+
+      return updated;
+    });
   }
 }

@@ -12,6 +12,7 @@ import {
 import { DraftsPage } from "./components/drafts/DraftsPage";
 import { RiwayatPage } from "./components/history/RiwayatPage";
 import { ProductionPage } from "./components/production/ProductionPage";
+import { RawMaterialsOutboundTrackingPage } from "./components/raw/RawMaterialsOutboundTrackingPage";
 import {
   Sidebar,
   SidebarContent,
@@ -50,6 +51,7 @@ import {
   LayoutDashboard,
   Box,
   Factory,
+  PackageCheck,
 } from "lucide-react";
 import { queryClient } from "./lib/react-query";
 
@@ -58,6 +60,7 @@ type View =
   | "inventory"
   | "masuk"
   | "keluar"
+  | "bahan-keluar"
   | "produksi"
   | "drafts"
   | "riwayat";
@@ -93,6 +96,12 @@ function SidebarNav({
       label: "Barang Keluar",
       icon: ArrowUpRight,
       href: "#keluar",
+    },
+    {
+      key: "bahan-keluar",
+      label: "Bahan Baku Keluar",
+      icon: PackageCheck,
+      href: "#bahan-keluar",
     },
     {
       key: "produksi",
@@ -231,6 +240,8 @@ function App() {
         ? "masuk"
         : window.location.hash === "#keluar"
           ? "keluar"
+          : window.location.hash === "#bahan-keluar"
+            ? "bahan-keluar"
           : window.location.hash === "#produksi"
             ? "produksi"
             : window.location.hash === "#drafts"
@@ -260,6 +271,8 @@ function App() {
         setView("masuk");
       } else if (window.location.hash === "#keluar") {
         setView("keluar");
+      } else if (window.location.hash === "#bahan-keluar") {
+        setView("bahan-keluar");
       } else if (window.location.hash === "#produksi") {
         setView("produksi");
       } else if (window.location.hash === "#drafts") {
@@ -318,6 +331,7 @@ function App() {
       inventory: "inventory",
       masuk: "masuk",
       keluar: "keluar",
+      "bahan-keluar": "bahan-keluar",
       produksi: "produksi",
       drafts: "drafts",
       riwayat: "riwayat",
@@ -430,6 +444,21 @@ function App() {
         logoutLoading={logoutMutation.isPending}
       >
         <OutboundPage />
+      </Shell>
+    );
+  }
+
+  if (view === "bahan-keluar") {
+    return (
+      <Shell
+        title="Bahan Baku Keluar"
+        view={view}
+        userEmail={user?.email}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        <RawMaterialsOutboundTrackingPage />
       </Shell>
     );
   }
