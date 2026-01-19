@@ -44,6 +44,7 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
 const INBOUND_URL = `${API_BASE}/api/inbound`;
 const OUTBOUND_URL = `${API_BASE}/api/outbound`;
 const ITEMS_URL = `${API_BASE}/api/items`;
+const RAW_OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
 
 type LineApi = { code: string; qty: number; note?: string; name?: string };
 type InboundApi = {
@@ -65,6 +66,30 @@ type OutboundApi = {
   createdAt?: string;
 };
 
+type RawOutboundLine = {
+  id: string;
+  materialCode: string;
+  materialName?: string;
+  batchCode: string;
+  qty: number;
+  note?: string;
+  status: "OUT" | "RECEIVED";
+  receivedAt?: string | null;
+  receivedBy?: string | null;
+};
+
+type RawOutboundRecord = {
+  id: string;
+  code: string;
+  artisan: string;
+  date: string;
+  note?: string | null;
+  status: "OUT" | "RECEIVED";
+  receivedAt?: string | null;
+  lines: RawOutboundLine[];
+  createdAt?: string;
+};
+
 type Movement = {
   id: string;
   direction: "Masuk" | "Keluar";
@@ -78,6 +103,36 @@ type Movement = {
   rawTime: string;
   timestamp: number;
   note?: string;
+};
+
+type RawMovement = {
+  id: string;
+  txCode: string;
+  recordId: string;
+  materialCode: string;
+  name: string;
+  batchCode: string;
+  qty: number;
+  artisan: string;
+  status: "OUT" | "RECEIVED";
+  receivedBy?: string | null;
+  receivedAt?: string | null;
+  time: string;
+  rawTime: string;
+  timestamp: number;
+  note?: string;
+};
+
+const parseErrorText = (text: string, fallback: string) => {
+  if (!text) return fallback;
+  try {
+    const data = JSON.parse(text) as { message?: string | string[] };
+    if (Array.isArray(data.message)) return data.message.join(", ");
+    if (typeof data.message === "string") return data.message;
+  } catch {
+    // ignore JSON parse errors
+  }
+  return text;
 };
 
 function formatDateTime(value: string) {
@@ -100,6 +155,7 @@ export function RiwayatPage() {
   );
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
+  const [rawOutbound, setRawOutbound] = useState<RawOutboundRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "Masuk" | "Keluar">(
@@ -108,6 +164,10 @@ export function RiwayatPage() {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [rawSearch, setRawSearch] = useState("");
+  const [rawStatus, setRawStatus] = useState<"all" | "OUT" | "RECEIVED">(
+    "all"
+  );
   const [page, setPage] = useState(1);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState<{
@@ -118,7 +178,7 @@ export function RiwayatPage() {
     note?: string;
     lines: Array<{ code: string; name?: string; qty: number; note?: string }>;
   } | null>(null);
-  const perPage = 20;
+  const perPage = 10;
 
   useEffect(() => {
     let cancelled = false;
@@ -146,16 +206,28 @@ export function RiwayatPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inRes, outRes] = await Promise.all([
+      const [inRes, outRes, rawRes] = await Promise.all([
         fetch(`${INBOUND_URL}?limit=200`),
         fetch(`${OUTBOUND_URL}?limit=200`),
+        fetch(`${RAW_OUTBOUND_URL}?limit=200`),
       ]);
-      if (!inRes.ok) throw new Error(await inRes.text());
-      if (!outRes.ok) throw new Error(await outRes.text());
+      if (!inRes.ok) {
+        throw new Error(parseErrorText(await inRes.text(), "Gagal memuat riwayat."));
+      }
+      if (!outRes.ok) {
+        throw new Error(parseErrorText(await outRes.text(), "Gagal memuat riwayat."));
+      }
+      if (!rawRes.ok) {
+        throw new Error(
+          parseErrorText(await rawRes.text(), "Gagal memuat riwayat bahan baku.")
+        );
+      }
       const inboundData = (await inRes.json()) as InboundApi[];
       const outboundData = (await outRes.json()) as OutboundApi[];
+      const rawData = (await rawRes.json()) as RawOutboundRecord[];
       setInbound(inboundData);
       setOutbound(outboundData);
+      setRawOutbound(rawData);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal memuat riwayat.";
@@ -194,13 +266,62 @@ export function RiwayatPage() {
         }));
       });
 
+    const rawOutboundLines = rawOutbound.flatMap((rec) =>
+      rec.lines.map((line, idx) => {
+        const sourceDate = rec.createdAt ?? rec.date ?? "";
+        return {
+          id: `raw-out-${rec.id}-${idx}-${line.id}`,
+          direction: "Keluar" as const,
+          txCode: rec.code ?? "-",
+          recordId: rec.id,
+          itemCode: line.materialCode,
+          name: line.materialName ?? line.materialCode,
+          qty: line.qty,
+          actor: rec.artisan,
+          time: formatDateTime(sourceDate),
+          rawTime: sourceDate,
+          timestamp: Date.parse(sourceDate) || 0,
+          note: line.note ?? `Batch: ${line.batchCode}`,
+        };
+      })
+    );
+
     const combined = [
       ...mapLines(inbound, "Masuk", "vendor"),
       ...mapLines(outbound, "Keluar", "orderer"),
+      ...rawOutboundLines,
     ];
 
     return combined.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inbound, outbound, items]);
+  }, [inbound, outbound, items, rawOutbound]);
+
+  const rawMovements: RawMovement[] = useMemo(() => {
+    const rows = rawOutbound.flatMap((rec) =>
+      rec.lines.map((line, idx) => {
+        const rawTime = rec.createdAt ?? rec.date ?? "";
+        const timestamp = Date.parse(rawTime) || 0;
+        return {
+          id: `raw-${rec.id}-${idx}-${line.id}`,
+          txCode: rec.code ?? "-",
+          recordId: rec.id,
+          materialCode: line.materialCode,
+          name: line.materialName ?? line.materialCode,
+          batchCode: line.batchCode,
+          qty: line.qty,
+          artisan: rec.artisan,
+          status: line.status,
+          receivedBy: line.receivedBy ?? null,
+          receivedAt: line.receivedAt ?? rec.receivedAt ?? null,
+          time: formatDateTime(rawTime),
+          rawTime,
+          timestamp,
+          note: line.note ?? rec.note ?? undefined,
+        };
+      })
+    );
+
+    return rows.sort((a, b) => b.timestamp - a.timestamp);
+  }, [rawOutbound]);
 
   const stats = useMemo(() => {
     const total = movements.length;
@@ -233,6 +354,18 @@ export function RiwayatPage() {
       return haystack.includes(term);
     });
   }, [movements, typeFilter, search, fromDate, toDate]);
+
+  const filteredRaw = useMemo(() => {
+    const term = rawSearch.trim().toLowerCase();
+    return rawMovements.filter((row) => {
+      if (rawStatus !== "all" && row.status !== rawStatus) return false;
+      if (!term) return true;
+      const haystack = `${row.txCode} ${row.materialCode} ${row.name} ${row.batchCode} ${
+        row.artisan
+      } ${row.note ?? ""}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [rawMovements, rawSearch, rawStatus]);
 
   useEffect(() => {
     setPage(1);
@@ -619,6 +752,139 @@ export function RiwayatPage() {
               </PaginationItem>
             </PaginationContent>
           </Pager>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="flex flex-wrap items-start gap-3 p-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Riwayat bahan baku keluar</p>
+            <h2 className="text-lg font-semibold">Bahan baku</h2>
+          </div>
+          <div className="flex w-full flex-1 flex-wrap gap-3 md:justify-end">
+            <div className="flex min-w-60 flex-1 items-center gap-2 rounded-lg border px-3">
+              <Search className="size-4 text-muted-foreground" />
+              <Input
+                className="border-0 shadow-none focus-visible:ring-0"
+                placeholder="Cari kode, bahan baku, batch, atau pengrajin"
+                value={rawSearch}
+                onChange={(e) => setRawSearch(e.target.value)}
+              />
+            </div>
+            <select
+              className="h-10 rounded-lg border px-3 text-sm shadow-sm"
+              value={rawStatus}
+              onChange={(e) => setRawStatus(e.target.value as typeof rawStatus)}
+            >
+              <option value="all">Semua status</option>
+              <option value="OUT">OUT</option>
+              <option value="RECEIVED">RECEIVED</option>
+            </select>
+          </div>
+        </div>
+        <Separator />
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-slate-100">
+              <TableRow>
+                <TableHead className="font-semibold text-slate-800">Waktu</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Kode transaksi
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Kode bahan
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Nama bahan
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">Batch</TableHead>
+                <TableHead className="font-semibold text-slate-800">Qty</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Pengrajin
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">Status</TableHead>
+                <TableHead className="font-semibold text-slate-800">Admin</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Diterima
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={10}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
+                    Memuat riwayat bahan baku...
+                  </TableCell>
+                </TableRow>
+              ) : error ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={10}
+                    className="py-6 text-center text-sm text-red-600"
+                  >
+                    {error}
+                  </TableCell>
+                </TableRow>
+              ) : filteredRaw.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={10}
+                    className="py-6 text-center text-sm text-muted-foreground"
+                  >
+                    Belum ada riwayat bahan baku keluar.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredRaw.map((row) => (
+                  <TableRow key={row.id} className="odd:bg-slate-50">
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {row.time}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-slate-700">
+                      {row.txCode}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {row.materialCode}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{row.name}</div>
+                      <p className="text-xs text-muted-foreground">{row.note}</p>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.batchCode}
+                    </TableCell>
+                    <TableCell className="font-semibold">{row.qty}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.artisan}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        className={cn(
+                          "rounded-full px-3",
+                          row.status === "RECEIVED"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        )}
+                      >
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.receivedBy ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {row.receivedAt
+                        ? new Date(row.receivedAt).toLocaleDateString("id-ID")
+                        : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
 

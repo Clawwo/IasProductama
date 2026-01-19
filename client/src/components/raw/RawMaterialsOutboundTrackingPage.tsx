@@ -85,6 +85,18 @@ type LineForm = {
 
 type ToastVariant = "default" | "destructive";
 
+const parseErrorText = (text: string, fallback: string) => {
+  if (!text) return fallback;
+  try {
+    const data = JSON.parse(text) as { message?: string | string[] };
+    if (Array.isArray(data.message)) return data.message.join(", ");
+    if (typeof data.message === "string") return data.message;
+  } catch {
+    // ignore JSON parse errors
+  }
+  return text;
+};
+
 export function RawMaterialsOutboundTrackingPage() {
   const [artisan, setArtisan] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -134,7 +146,9 @@ export function RawMaterialsOutboundTrackingPage() {
   const loadRawItems = useCallback(async () => {
     try {
       const res = await fetch(RAW_URL);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(parseErrorText(await res.text(), "Gagal memuat bahan baku"));
+      }
       const data = (await res.json()) as RawMaterial[];
       setRawItems(data);
     } catch (err: unknown) {
@@ -147,7 +161,9 @@ export function RawMaterialsOutboundTrackingPage() {
     setLoading(true);
     try {
       const res = await fetch(`${OUTBOUND_URL}?limit=50`);
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(parseErrorText(await res.text(), "Gagal memuat tracking"));
+      }
       const data = (await res.json()) as OutboundRecord[];
       setOutbounds(data);
     } catch (err: unknown) {
@@ -168,6 +184,15 @@ export function RawMaterialsOutboundTrackingPage() {
     rawItems.forEach((item) => map.set(item.code, item));
     return map;
   }, [rawItems]);
+
+  const pendingOutbounds = useMemo(() => {
+    return outbounds
+      .map((record) => ({
+        ...record,
+        lines: record.lines.filter((line) => line.status === "OUT"),
+      }))
+      .filter((record) => record.lines.length > 0);
+  }, [outbounds]);
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
@@ -250,7 +275,9 @@ export function RawMaterialsOutboundTrackingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(parseErrorText(await res.text(), "Gagal menyimpan."));
+      }
       showNotice("default", "Bahan baku keluar berhasil disimpan.");
       setLines([]);
       setNote("");
@@ -277,7 +304,9 @@ export function RawMaterialsOutboundTrackingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receivedBy: receiverName.trim() }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        throw new Error(parseErrorText(await res.text(), "Gagal memperbarui."));
+      }
       showNotice("default", "Status diterima diperbarui.");
       await loadOutbounds();
     } catch (err: unknown) {
@@ -573,11 +602,13 @@ export function RawMaterialsOutboundTrackingPage() {
 
         {loading ? (
           <div className="text-sm text-muted-foreground">Memuat tracking...</div>
-        ) : outbounds.length === 0 ? (
-          <div className="text-sm text-muted-foreground">Belum ada transaksi.</div>
+        ) : pendingOutbounds.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            Tidak ada bahan baku yang masih menunggu diterima.
+          </div>
         ) : (
           <div className="space-y-4">
-            {outbounds.map((record) => (
+            {pendingOutbounds.map((record) => (
               <div key={record.id} className="rounded-lg border p-3">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
