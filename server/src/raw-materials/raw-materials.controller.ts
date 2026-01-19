@@ -6,9 +6,12 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { RawMaterialsService } from './raw-materials.service.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
+import { CreateRawMaterialOutboundDto } from './dto/create-raw-material-outbound.dto.js';
+import { ReceiveRawMaterialOutboundLineDto } from './dto/receive-raw-material-outbound-line.dto.js';
 import { UpdateRawMaterialDto } from './dto/update-raw-material.dto.js';
 
 @Controller('raw-materials')
@@ -18,6 +21,27 @@ export class RawMaterialsController {
   @Get()
   findAll() {
     return this.rawMaterialsService.findAll();
+  }
+
+  @Get('outbound')
+  findOutbound(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    return this.rawMaterialsService.findOutboundRecent(
+      Number.isFinite(parsed) ? parsed : undefined,
+    );
+  }
+
+  @Post('outbound')
+  createOutbound(@Body() dto: CreateRawMaterialOutboundDto) {
+    return this.rawMaterialsService.createOutbound(dto);
+  }
+
+  @Patch('outbound/lines/:id/receive')
+  receiveOutboundLine(
+    @Param('id') id: string,
+    @Body() dto: ReceiveRawMaterialOutboundLineDto,
+  ) {
+    return this.rawMaterialsService.receiveOutboundLine(id, dto);
   }
 
   @Get(':code')

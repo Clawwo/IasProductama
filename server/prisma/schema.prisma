@@ -97,6 +97,8 @@ model BahanBaku {
   stock     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
+
+  outboundLines RawMaterialOutboundLine[]
 }
 
 model Bom {
@@ -183,6 +185,43 @@ model Draft {
   updatedAt DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 }
 
+model RawMaterialOutbound {
+  id         String                     @id @default(uuid())
+  code       String                     @unique
+  artisan    String
+  date       DateTime
+  note       String?
+  status     RawMaterialOutboundStatus  @default(OUT)
+  receivedAt DateTime?
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+  lines      RawMaterialOutboundLine[]
+}
+
+model RawMaterialOutboundLine {
+  id            String                     @id @default(uuid())
+  outboundId    String
+  materialCode  String
+  materialName  String?
+  category      String?
+  subCategory   String?
+  kind          String?
+  batchCode     String
+  qty           Int
+  note          String?
+  status        RawMaterialOutboundStatus  @default(OUT)
+  receivedAt    DateTime?
+  receivedBy    String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+  outbound      RawMaterialOutbound        @relation(fields: [outboundId], references: [id], onDelete: Cascade)
+  material      BahanBaku                  @relation(fields: [materialCode], references: [code])
+
+  @@index([outboundId])
+  @@index([materialCode])
+  @@index([batchCode])
+}
+
 enum Role {
   ADMIN
   PETUGAS
@@ -197,4 +236,9 @@ enum DraftType {
 enum BomSourceType {
   ITEM
   BAHAN_BAKU
+}
+
+enum RawMaterialOutboundStatus {
+  OUT
+  RECEIVED
 }
