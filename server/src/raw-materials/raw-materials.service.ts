@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
 import { CreateRawMaterialOutboundDto } from './dto/create-raw-material-outbound.dto.js';
@@ -70,7 +74,7 @@ export class RawMaterialsService {
     return { success: true };
   }
 
-  async findOutboundRecent(limit = 20) {
+  findOutboundRecent(limit = 20) {
     const take =
       Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20;
     return this.prisma.rawMaterialOutbound.findMany({

@@ -46,18 +46,46 @@ export class ProductionService {
 
       for (const line of dto.rawLines) {
         const sourceType = line.sourceType ?? 'BAHAN_BAKU';
+
         if (sourceType === 'ITEM') {
-          const existing = await tx.item.findUnique({
+          const existingItem = await tx.item.findUnique({
             where: { code: line.code },
           });
-          if (!existing) {
-            throw new BadRequestException(`Item ${line.code} tidak ditemukan.`);
+
+          if (!existingItem) {
+            // Fallback: if mistakenly marked ITEM but lives in bahan baku, try there
+            const fallbackRaw = await tx.bahanBaku.findUnique({
+              where: { code: line.code },
+            });
+            if (!fallbackRaw) {
+              throw new BadRequestException(
+                `Item ${line.code} tidak ditemukan.`,
+              );
+            }
+            if ((fallbackRaw.stock ?? 0) < line.qty) {
+              throw new BadRequestException(
+                `Stok bahan baku ${line.code} tidak cukup. Sisa: ${fallbackRaw.stock ?? 0}`,
+              );
+            }
+            await tx.bahanBaku.update({
+              where: { code: line.code },
+              data: {
+                stock: { decrement: line.qty },
+                name: line.name ?? undefined,
+                category: line.category ?? undefined,
+                subCategory: line.subCategory ?? undefined,
+                kind: line.kind ?? undefined,
+              },
+            });
+            continue;
           }
-          if (existing.stock < line.qty) {
+
+          if ((existingItem.stock ?? 0) < line.qty) {
             throw new BadRequestException(
-              `Stok item ${line.code} tidak cukup. Sisa: ${existing.stock}`,
+              `Stok item ${line.code} tidak cukup. Sisa: ${existingItem.stock ?? 0}`,
             );
           }
+
           await tx.item.update({
             where: { code: line.code },
             data: {
@@ -69,17 +97,41 @@ export class ProductionService {
             },
           });
         } else {
-          const existing = await tx.bahanBaku.findUnique({
+          const existingRaw = await tx.bahanBaku.findUnique({
             where: { code: line.code },
           });
-          if (!existing) {
-            throw new BadRequestException(
-              `Bahan baku ${line.code} tidak ditemukan.`,
-            );
+
+          if (!existingRaw) {
+            // Fallback: if sourceType omitted/mistaken but item exists, consume item
+            const fallbackItem = await tx.item.findUnique({
+              where: { code: line.code },
+            });
+            if (!fallbackItem) {
+              throw new BadRequestException(
+                `Bahan baku ${line.code} tidak ditemukan.`,
+              );
+            }
+            if ((fallbackItem.stock ?? 0) < line.qty) {
+              throw new BadRequestException(
+                `Stok item ${line.code} tidak cukup. Sisa: ${fallbackItem.stock ?? 0}`,
+              );
+            }
+            await tx.item.update({
+              where: { code: line.code },
+              data: {
+                stock: { decrement: line.qty },
+                name: line.name ?? undefined,
+                category: line.category ?? undefined,
+                subCategory: line.subCategory ?? undefined,
+                kind: line.kind ?? undefined,
+              },
+            });
+            continue;
           }
-          if (existing.stock < line.qty) {
+
+          if ((existingRaw.stock ?? 0) < line.qty) {
             throw new BadRequestException(
-              `Stok bahan baku ${line.code} tidak cukup. Sisa: ${existing.stock}`,
+              `Stok bahan baku ${line.code} tidak cukup. Sisa: ${existingRaw.stock ?? 0}`,
             );
           }
 

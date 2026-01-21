@@ -51,6 +51,7 @@ type LineItem = {
   qty: number;
   note?: string;
   sourceType?: "ITEM" | "BAHAN_BAKU";
+  auto?: boolean;
 };
 
 type RemoteItem = {
@@ -79,6 +80,10 @@ type BomEntry = {
 
 function normalize(text: string | undefined) {
   return (text ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function bomKey(code?: string, name?: string) {
+  return normalize(code || name);
 }
 
 export function ProductionPage() {
@@ -187,9 +192,63 @@ export function ProductionPage() {
     return list.slice(0, 50);
   }, [rawItems, rawSearch]);
 
+  // Rebuild auto raw lines from BOM whenever finished lines or BOM cache changes
+  useEffect(() => {
+    setRawLines((prev) => {
+      const manual = prev.filter((l) => !l.auto);
+
+      const aggregate = new Map<
+        string,
+        { code?: string; name: string; qty: number; sourceType?: "ITEM" | "BAHAN_BAKU" }
+      >();
+
+      finishedLines.forEach((finished) => {
+        const key = bomKey(finished.code, finished.name);
+        if (!key) return;
+        const bom = bomCache[key];
+        if (!bom) return;
+        const finishedQty = finished.qty || 0;
+        bom.lines.forEach((line) => {
+          const baseKey = line.code || line.name || "";
+          if (!baseKey) return;
+          const aggKey = line.code ?? baseKey;
+          const name = line.name ?? line.code ?? baseKey;
+          const qtyToAdd = (line.qty || 0) * finishedQty;
+          const rawMeta = line.code
+            ? rawItems.find((it) => it.code === line.code)
+            : rawNameIndex.get(normalize(name));
+          const sourceType = line.sourceType ?? (rawMeta ? "BAHAN_BAKU" : "ITEM");
+          const current = aggregate.get(aggKey) ?? {
+            code: line.code ?? undefined,
+            name,
+            qty: 0,
+            sourceType,
+          };
+          current.qty += qtyToAdd;
+          current.sourceType = sourceType;
+          aggregate.set(aggKey, current);
+        });
+      });
+
+      const autoLines: LineItem[] = Array.from(aggregate.values()).map(
+        (v, idx) => ({
+          id: `auto-${idx}-${v.code ?? v.name}`,
+          code: v.code ?? v.name,
+          name: v.name,
+          qty: v.qty,
+          note: undefined,
+          sourceType: v.sourceType ?? "BAHAN_BAKU",
+          auto: true,
+        })
+      );
+
+      return [...manual, ...autoLines];
+    });
+  }, [finishedLines, bomCache, rawItems, rawNameIndex]);
+
   const findBomForFinished = useCallback(
     async (item: LineItem) => {
-      const key = normalize(item.code || item.name);
+      const key = bomKey(item.code, item.name);
       if (key && bomCache[key]) return bomCache[key];
 
       const params = new URLSearchParams();
@@ -217,52 +276,33 @@ export function ProductionPage() {
     [bomCache, pushToast]
   );
 
-  const applyBomToRaw = useCallback(
-    (bomKey: string, entry: BomEntry, finishedQty: number) => {
-      const lines = entry.lines;
-      const missing: string[] = [];
-      setRawLines((prev) => {
-        const next = [...prev];
-        lines.forEach((line) => {
-          const componentName = line.name ?? line.code ?? "";
-          const normComp = normalize(componentName);
-          const meta = rawNameIndex.get(normComp);
-          const code = line.code ?? meta?.code ?? componentName;
-          const name = line.name ?? meta?.name ?? componentName;
-          const qtyToAdd = (line.qty || 0) * finishedQty;
-          const existing = next.find((r) => r.code === code);
-          if (existing) {
-            existing.qty += qtyToAdd;
-          } else {
-            next.push({
-              id: crypto.randomUUID(),
-              code,
-              name,
-              qty: qtyToAdd,
-              sourceType: line.sourceType ?? "BAHAN_BAKU",
-            });
-          }
-          if (!meta) missing.push(componentName || "(tanpa nama)");
-        });
-        return next;
-      });
+  // Prefetch BOM for all finished lines that are not yet cached
+  useEffect(() => {
+    const missing = finishedLines
+      .map((l) => ({ line: l, key: bomKey(l.code, l.name) }))
+      .filter(({ key }) => key && !bomCache[key]);
 
-      if (missing.length) {
-        pushToast(
-          "destructive",
-          `BOM ${bomKey}: ${missing.length} bahan tidak dikenali`,
-          `Cek: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? ", ..." : ""}`
-        );
-      } else {
-        pushToast(
-          "default",
-          `BOM ${bomKey} terisi otomatis`,
-          `Ditambahkan ${lines.length} baris bahan baku.`
-        );
+    if (!missing.length) return;
+
+    (async () => {
+      for (const { line, key } of missing) {
+        if (!key) continue;
+        const params = new URLSearchParams();
+        if (line.code) params.append("code", line.code);
+        else if (line.name) params.append("name", line.name);
+        else continue;
+
+        try {
+          const res = await fetch(`${BOM_URL}?${params.toString()}`);
+          if (!res.ok) continue;
+          const data = (await res.json()) as BomEntry;
+          setBomCache((prev) => ({ ...prev, [key]: data }));
+        } catch (err) {
+          console.error("Failed to prefetch BOM", err);
+        }
       }
-    },
-    [rawNameIndex, pushToast]
-  );
+    })();
+  }, [finishedLines, bomCache]);
 
   async function addFinished() {
     if (!finishedLine.code || !finishedLine.name) {
@@ -299,25 +339,26 @@ export function ProductionPage() {
           id: crypto.randomUUID(),
           code: finishedLine.code,
           name: finishedLine.name,
+          auto: false,
           qty: finishedLine.qty,
           note: newNote || undefined,
         },
       ];
     });
 
-    if (bomEntry) {
-      const bomKey =
-        bomEntry.productName ??
-        bomEntry.productCode ??
-        finishedLine.name ??
-        finishedLine.code;
-      applyBomToRaw(bomKey || "BOM", bomEntry, finishedLine.qty);
-    } else {
+    if (!bomEntry) {
       pushToast(
         "destructive",
         "BOM tidak ditemukan",
         `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`
       );
+    } else {
+      const bomKey =
+        bomEntry.productName ??
+        bomEntry.productCode ??
+        finishedLine.name ??
+        finishedLine.code;
+      pushToast("default", `BOM ${bomKey} siap`, "Baris bahan akan terisi otomatis.");
     }
 
     setFinishedLine({
@@ -368,7 +409,14 @@ export function ProductionPage() {
         },
       ];
     });
-    setRawLine({ id: "seed-raw", code: "", name: "", qty: 1, note: "" });
+    setRawLine({
+      id: "seed-raw",
+      code: "",
+      name: "",
+      qty: 1,
+      note: "",
+      sourceType: "BAHAN_BAKU",
+    });
     setRawSearch("");
   }
 
@@ -415,6 +463,7 @@ export function ProductionPage() {
           kind: meta?.kind,
           qty: l.qty,
           note: l.note,
+          sourceType: l.sourceType ?? "BAHAN_BAKU",
         };
       }),
       finishedLines: finishedLines.map((l) => {
@@ -459,7 +508,14 @@ export function ProductionPage() {
         qty: 1,
         note: "",
       });
-      setRawLine({ id: "seed-raw", code: "", name: "", qty: 1, note: "" });
+      setRawLine({
+        id: "seed-raw",
+        code: "",
+        name: "",
+        qty: 1,
+        note: "",
+        sourceType: "BAHAN_BAKU",
+      });
       fetchData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
