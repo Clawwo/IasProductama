@@ -43,29 +43,15 @@ function normalize(text: string | null | undefined) {
     .trim();
 }
 
-function slugify(text: string) {
-  return normalize(text)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .toUpperCase();
-}
-
-function shortHash(text: string) {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash).toString(36).slice(0, 6).toUpperCase();
-}
-
 async function loadProducts(client: PoolClient) {
   const res = await client.query('SELECT code, name FROM "Product"');
-  const map = new Map<string, { code: string; name: string }>();
+  const byName = new Map<string, { code: string; name: string }>();
+  const byCode = new Map<string, { code: string; name: string }>();
   res.rows.forEach((row: { code: string; name: string }) => {
-    map.set(normalize(row.name), { code: row.code, name: row.name });
+    byName.set(normalize(row.name), { code: row.code, name: row.name });
+    byCode.set(normalize(row.code), { code: row.code, name: row.name });
   });
-  return map;
+  return { byName, byCode };
 }
 async function loadItems(client: PoolClient) {
   const res = await client.query('SELECT code, name FROM "Item"');
@@ -93,13 +79,9 @@ function matchComponent(
   component: string,
   items: { byName: Map<string, { code: string; name: string }>; byCode: Map<string, { code: string; name: string }> },
   raws: { byName: Map<string, { code: string; name: string }>; byCode: Map<string, { code: string; name: string }> },
-  ensureRaw: (name: string) => { code: string; name: string },
 ) {
   const norm = normalize(component);
-  if (!norm) {
-    const raw = ensureRaw(component || 'NONAME');
-    return { sourceType: 'BAHAN_BAKU' as const, code: raw.code, name: raw.name };
-  }
+  if (!norm) return null;
 
   // Prefer exact code match item
   const itemByCode = items.byCode.get(norm);
@@ -111,13 +93,11 @@ function matchComponent(
 
   // Exact code match raw
   const rawByCode = raws.byCode.get(norm);
-  if (rawByCode && !rawByCode.code.startsWith('BB-AUTO'))
-    return { sourceType: 'BAHAN_BAKU' as const, code: rawByCode.code, name: rawByCode.name };
+  if (rawByCode) return { sourceType: 'BAHAN_BAKU' as const, code: rawByCode.code, name: rawByCode.name };
 
   // Exact name match raw
   const rawByName = raws.byName.get(norm);
-  if (rawByName && !rawByName.code.startsWith('BB-AUTO'))
-    return { sourceType: 'BAHAN_BAKU' as const, code: rawByName.code, name: rawByName.name };
+  if (rawByName) return { sourceType: 'BAHAN_BAKU' as const, code: rawByName.code, name: rawByName.name };
 
   // Fallback: contains search on items first, then raw
   for (const [key, value] of items.byName.entries()) {
@@ -125,44 +105,43 @@ function matchComponent(
       return { sourceType: 'ITEM' as const, code: value.code, name: value.name };
   }
   for (const [key, value] of raws.byName.entries()) {
-    if ((key.includes(norm) || norm.includes(key)) && !value.code.startsWith('BB-AUTO'))
+    if (key.includes(norm) || norm.includes(key))
       return { sourceType: 'BAHAN_BAKU' as const, code: value.code, name: value.name };
   }
 
-  const raw = ensureRaw(component);
-  return { sourceType: 'BAHAN_BAKU' as const, code: raw.code, name: raw.name };
+  return null;
+}
+
+function matchProduct(
+  name: string,
+  products: { byName: Map<string, { code: string; name: string }>; byCode: Map<string, { code: string; name: string }> },
+) {
+  const norm = normalize(name);
+  if (!norm) return null;
+  const byName = products.byName.get(norm);
+  if (byName) return byName;
+  const byCode = products.byCode.get(norm);
+  if (byCode) return byCode;
+
+  for (const [key, value] of products.byName.entries()) {
+    if (key.includes(norm) || norm.includes(key)) return value;
+  }
+  for (const [key, value] of products.byCode.entries()) {
+    if (key.includes(norm) || norm.includes(key)) return value;
+  }
+
+  return null;
 }
 
 async function main() {
   const bom = loadBom();
 
   const client = await pool.connect();
-  await client.query('DELETE FROM "BahanBaku" WHERE "code" LIKE $1', ['BB-AUTO-%']);
-  const productMap = await loadProducts(client);
+  const products = await loadProducts(client);
   const items = await loadItems(client);
   const raws = await loadRawMaterials(client);
-  const pendingRaws = new Map<string, { code: string; name: string }>();
-
-  const ensureRaw = (name: string) => {
-    const norm = normalize(name);
-    if (!norm) {
-      const code = `BB-${shortHash('NONAME')}`;
-      return { code, name: 'NONAME' };
-    }
-    const existing = raws.byName.get(norm) || raws.byCode.get(norm);
-    if (existing) return existing;
-
-    const pending = pendingRaws.get(norm);
-    if (pending) return pending;
-
-    const code = `BB-${slugify(name)}-${shortHash(name)}`;
-    const entry = { code, name };
-    pendingRaws.set(norm, entry);
-    return entry;
-  };
-
   const rows = Object.entries(bom).map(([name, entry]) => {
-    const match = productMap.get(normalize(name));
+    const match = matchProduct(name, products);
     return {
       productCode: match?.code ?? name,
       productName: match?.name ?? name,
@@ -175,23 +154,10 @@ async function main() {
 
   try {
     await client.query('BEGIN');
-    if (pendingRaws.size) {
-      const params: string[] = [];
-      const values: Array<string> = [];
-      let idx = 0;
-      for (const { code, name } of pendingRaws.values()) {
-        params.push(`($${idx + 1}, $${idx + 2})`);
-        values.push(code, name);
-        idx += 2;
-      }
-      const insertSql = `INSERT INTO "BahanBaku" ("code", "name") VALUES ${params.join(',')} ON CONFLICT ("code") DO NOTHING;`;
-      await client.query(insertSql, values);
-      // refresh raws cache for lookups after insert
-      const updatedRaws = await loadRawMaterials(client);
-      raws.byName = updatedRaws.byName;
-      raws.byCode = updatedRaws.byCode;
-    }
     await client.query('TRUNCATE "BomLine", "Bom" RESTART IDENTITY');
+
+    let skippedLines = 0;
+    const skippedSamples: Array<{ product: string; component: string }> = [];
 
     for (const row of rows) {
       const bomRes = await client.query(
@@ -208,12 +174,19 @@ async function main() {
       if (row.lines.length) {
         const params: string[] = [];
         const values: Array<string | number | null> = [];
-        row.lines.forEach((line, idx) => {
-          const base = idx * 5;
+        row.lines.forEach((line) => {
+          const match = matchComponent(line.component, items, raws);
+          if (!match) {
+            skippedLines += 1;
+            if (skippedSamples.length < 20) {
+              skippedSamples.push({ product: row.productName ?? row.productCode, component: line.component });
+            }
+            return;
+          }
+          const base = params.length * 5;
           params.push(
             `(gen_random_uuid(), $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`,
           );
-          const match = matchComponent(line.component, items, raws, ensureRaw);
           values.push(
             bomId,
             match.sourceType,
@@ -227,12 +200,20 @@ async function main() {
           INSERT INTO "BomLine" ("id", "bomId", "sourceType", "code", "name", "qty")
           VALUES ${params.join(',')};
         `;
-        await client.query(sql, values);
+        if (params.length) {
+          await client.query(sql, values);
+        }
       }
     }
 
     await client.query('COMMIT');
     console.log('BOM import completed.');
+    if (skippedLines) {
+      console.warn(`Skipped ${skippedLines} BOM lines not found in Item/BahanBaku tables.`);
+      skippedSamples.forEach((sample) => {
+        console.warn(`- ${sample.product}: ${sample.component}`);
+      });
+    }
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Failed to import BOM', err);
