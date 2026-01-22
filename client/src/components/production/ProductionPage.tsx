@@ -20,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Calendar,
   Factory,
+  Filter,
   Plus,
   Search,
   StickyNote,
@@ -114,7 +115,11 @@ export function ProductionPage() {
   const [rawLines, setRawLines] = useState<LineItem[]>([]);
 
   const [finishedSearch, setFinishedSearch] = useState("");
+  const [finishedType, setFinishedType] = useState("all");
+  const [finishedSubType, setFinishedSubType] = useState("all");
   const [rawSearch, setRawSearch] = useState("");
+  const [rawType, setRawType] = useState("all");
+  const [rawSubType, setRawSubType] = useState("all");
   const [finishedHighlight, setFinishedHighlight] = useState(0);
   const [rawHighlight, setRawHighlight] = useState(0);
   const [finishedDropdownOpen, setFinishedDropdownOpen] = useState(false);
@@ -168,9 +173,29 @@ export function ProductionPage() {
 
   const mergedFinishedItems = useMemo(() => products, [products]);
 
+  const finishedTypes = useMemo(() => {
+    const set = new Set<string>();
+    mergedFinishedItems.forEach((item) => {
+      if (item.category) set.add(item.category);
+    });
+    return Array.from(set).sort();
+  }, [mergedFinishedItems]);
+
+  const finishedSubTypes = useMemo(() => {
+    const set = new Set<string>();
+    mergedFinishedItems.forEach((item) => {
+      if (finishedType !== "all" && item.category !== finishedType) return;
+      if (item.subCategory) set.add(item.subCategory);
+    });
+    return Array.from(set).sort();
+  }, [mergedFinishedItems, finishedType]);
+
   const finishedFiltered = useMemo(() => {
     const term = finishedSearch.toLowerCase();
     const list = mergedFinishedItems.filter((it) => {
+      if (finishedType !== "all" && it.category !== finishedType) return false;
+      if (finishedSubType !== "all" && it.subCategory !== finishedSubType)
+        return false;
       if (!term) return true;
       return (
         it.code.toLowerCase().includes(term) ||
@@ -178,11 +203,40 @@ export function ProductionPage() {
       );
     });
     return list.slice(0, 50);
-  }, [mergedFinishedItems, finishedSearch]);
+  }, [mergedFinishedItems, finishedSearch, finishedType, finishedSubType]);
+
+  useEffect(() => {
+    setFinishedHighlight(0);
+    if (
+      finishedSubType !== "all" &&
+      !finishedSubTypes.includes(finishedSubType)
+    ) {
+      setFinishedSubType("all");
+    }
+  }, [finishedSearch, finishedType, finishedSubType, finishedSubTypes]);
+
+  const rawTypes = useMemo(() => {
+    const set = new Set<string>();
+    rawItems.forEach((item) => {
+      if (item.category) set.add(item.category);
+    });
+    return Array.from(set).sort();
+  }, [rawItems]);
+
+  const rawSubTypes = useMemo(() => {
+    const set = new Set<string>();
+    rawItems.forEach((item) => {
+      if (rawType !== "all" && item.category !== rawType) return;
+      if (item.subCategory) set.add(item.subCategory);
+    });
+    return Array.from(set).sort();
+  }, [rawItems, rawType]);
 
   const rawFiltered = useMemo(() => {
     const term = rawSearch.toLowerCase();
     const list = rawItems.filter((it) => {
+      if (rawType !== "all" && it.category !== rawType) return false;
+      if (rawSubType !== "all" && it.subCategory !== rawSubType) return false;
       if (!term) return true;
       return (
         it.code.toLowerCase().includes(term) ||
@@ -190,7 +244,14 @@ export function ProductionPage() {
       );
     });
     return list.slice(0, 50);
-  }, [rawItems, rawSearch]);
+  }, [rawItems, rawSearch, rawType, rawSubType]);
+
+  useEffect(() => {
+    setRawHighlight(0);
+    if (rawSubType !== "all" && !rawSubTypes.includes(rawSubType)) {
+      setRawSubType("all");
+    }
+  }, [rawSearch, rawType, rawSubType, rawSubTypes]);
 
   // Rebuild auto raw lines from BOM whenever finished lines or BOM cache changes
   useEffect(() => {
@@ -253,8 +314,8 @@ export function ProductionPage() {
 
       const params = new URLSearchParams();
       if (item.code) params.append("code", item.code);
-      else if (item.name) params.append("name", item.name);
-      else return null;
+      if (item.name) params.append("name", item.name);
+      if (!item.code && !item.name) return null;
 
       try {
         const res = await fetch(`${BOM_URL}?${params.toString()}`);
@@ -289,8 +350,8 @@ export function ProductionPage() {
         if (!key) continue;
         const params = new URLSearchParams();
         if (line.code) params.append("code", line.code);
-        else if (line.name) params.append("name", line.name);
-        else continue;
+        if (line.name) params.append("name", line.name);
+        if (!line.code && !line.name) continue;
 
         try {
           const res = await fetch(`${BOM_URL}?${params.toString()}`);
@@ -619,6 +680,55 @@ export function ProductionPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Jenis produk
+                  {finishedType !== "all" ? `: ${finishedType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setFinishedType("all")}>
+                  Semua jenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {finishedTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setFinishedType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Subjenis
+                  {finishedSubType !== "all" ? `: ${finishedSubType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setFinishedSubType("all")}>
+                  Semua subjenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {finishedSubTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setFinishedSubType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           <LineComposer
             dropdownOpen={finishedDropdownOpen}
             setDropdownOpen={setFinishedDropdownOpen}
@@ -654,6 +764,49 @@ export function ProductionPage() {
                 Tambahkan bahan baku yang berkurang stoknya.
               </p>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Jenis bahan
+                  {rawType !== "all" ? `: ${rawType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setRawType("all")}>
+                  Semua jenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {rawTypes.map((type) => (
+                  <DropdownMenuItem key={type} onSelect={() => setRawType(type)}>
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Subjenis
+                  {rawSubType !== "all" ? `: ${rawSubType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setRawSubType("all")}>
+                  Semua subjenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {rawSubTypes.map((type) => (
+                  <DropdownMenuItem key={type} onSelect={() => setRawSubType(type)}>
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <LineComposer
