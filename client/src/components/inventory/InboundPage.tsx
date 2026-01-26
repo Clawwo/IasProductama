@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { httpJson, toUserMessage } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -159,22 +160,18 @@ export function InboundPage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const [itemsRes, rawRes] = await Promise.all([
-        fetch(ITEMS_URL),
-        fetch(RAW_URL),
+      const [itemsData, rawData] = await Promise.all([
+        httpJson<RemoteItem[]>(ITEMS_URL),
+        httpJson<RemoteItem[]>(RAW_URL),
       ]);
-
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
-      if (!rawRes.ok) throw new Error(await rawRes.text());
-
-      const itemsData = (await itemsRes.json()) as RemoteItem[];
-      const rawData = (await rawRes.json()) as RemoteItem[];
 
       setRemoteItems(itemsData);
       setRawItems(rawData);
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
+      const message = toUserMessage(
+        err,
+        "Tidak bisa mengambil data stok. Coba muat ulang."
+      );
       pushToast("destructive", "Gagal memuat stok", message);
     }
   }, []);
@@ -623,35 +620,40 @@ export function InboundPage() {
   );
 
   function addLine() {
-    if (!lineItem.code || !lineItem.name) {
-      setFormError("Pilih barang terlebih dahulu.");
+    const code = lineItem.code.trim();
+    const target = mergedItems.find((it) => it.code === code);
+    if (!code || !target) {
+      setFormError("Pilih barang yang terdaftar.");
       return;
     }
-    if (lineItem.qty <= 0) {
+
+    const qty = Number(lineItem.qty);
+    if (!Number.isFinite(qty) || qty <= 0) {
       setFormError("Qty harus lebih dari 0.");
       return;
     }
+
     const newNote = lineItem.note.trim();
     setLines((prev) => {
-      const existing = prev.find((l) => l.code === lineItem.code);
+      const existing = prev.find((l) => l.code === code);
       if (existing) {
         return prev.map((l) => {
-          if (l.code !== lineItem.code) return l;
+          if (l.code !== code) return l;
           const combinedNote = newNote
             ? l.note
               ? `${l.note} | ${newNote}`
               : newNote
             : l.note;
-          return { ...l, qty: l.qty + lineItem.qty, note: combinedNote };
+          return { ...l, qty: l.qty + qty, note: combinedNote };
         });
       }
       return [
         ...prev,
         {
           id: crypto.randomUUID(),
-          code: lineItem.code,
-          name: lineItem.name,
-          qty: lineItem.qty,
+          code,
+          name: target.name ?? code,
+          qty,
           note: newNote || undefined,
         },
       ];
@@ -662,7 +664,7 @@ export function InboundPage() {
     pushToast(
       "default",
       "Baris ditambahkan",
-      `${lineItem.code} - ${lineItem.name}`
+      `${code} - ${target.name ?? code}`
     );
   }
 
@@ -672,6 +674,10 @@ export function InboundPage() {
     if (target) {
       pushToast("default", "Baris dihapus", `${target.code} - ${target.name}`);
     }
+  }
+
+  function isValidDateString(value: string) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
   async function handleSaveDraft() {
@@ -698,16 +704,11 @@ export function InboundPage() {
       const isUpdate = Boolean(draftId);
       const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
       const method = isUpdate ? "PUT" : "POST";
-      const res = await fetch(targetUrl, {
+      const data = await httpJson<{ id?: string }>(targetUrl, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "INBOUND", payload }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan draft");
-      }
-      const data = (await res.json()) as { id?: string };
       if (data?.id) setDraftId(data.id);
       setDraftStatus("Draft tersimpan");
       pushToast(
@@ -716,8 +717,7 @@ export function InboundPage() {
         "Draft barang masuk berhasil disimpan."
       );
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Gagal menyimpan draft.";
+      const message = toUserMessage(err, "Gagal menyimpan draft.");
       pushToast("destructive", "Gagal simpan draft", message);
     } finally {
       setDraftSaving(false);
@@ -725,21 +725,29 @@ export function InboundPage() {
   }
 
   async function handleComplete() {
-    if (!vendor.trim()) {
+    const trimmedVendor = vendor.trim();
+    if (!trimmedVendor) {
       setFormError("Pemasok/pengirim wajib diisi.");
       return;
     }
-    if (!date) {
-      setFormError("Tanggal tidak boleh kosong.");
+    if (!date || !isValidDateString(date)) {
+      setFormError("Tanggal wajib diisi dengan format YYYY-MM-DD.");
       return;
     }
     if (lines.length === 0) {
       setFormError("Tambah minimal 1 baris barang.");
       return;
     }
+    const unknownLine = lines.find((l) =>
+      mergedItems.every((it) => it.code !== l.code)
+    );
+    if (unknownLine) {
+      setFormError(`Kode ${unknownLine.code} tidak dikenali.`);
+      return;
+    }
 
     const payload = {
-      vendor: vendor.trim(),
+      vendor: trimmedVendor,
       date,
       note: note.trim() || undefined,
       lines: lines.map((l) => {
@@ -760,16 +768,11 @@ export function InboundPage() {
       setSubmitStatus("loading");
       setSubmitMessage("");
       setFormError("");
-      const res = await fetch(INBOUND_URL, {
+      const data = await httpJson<{ code?: string }>(INBOUND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan");
-      }
-      const data = (await res.json()) as { code?: string };
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
       setSubmitStatus("success");
       setSubmitMessage(
@@ -784,7 +787,7 @@ export function InboundPage() {
       );
       fetchItems();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Gagal menyimpan.";
+      const message = toUserMessage(err, "Gagal menyimpan.");
       setSubmitStatus("error");
       setSubmitMessage(message);
       pushToast("destructive", "Gagal menyimpan", message);

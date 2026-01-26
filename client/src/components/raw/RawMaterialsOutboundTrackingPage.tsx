@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { httpJson, toUserMessage } from "@/lib/http";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -133,26 +134,20 @@ export function RawMaterialsOutboundTrackingPage() {
 
   const loadRawItems = useCallback(async () => {
     try {
-      const res = await fetch(RAW_URL);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as RawMaterial[];
+      const data = await httpJson<RawMaterial[]>(RAW_URL);
       setRawItems(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Gagal memuat bahan baku";
-      showNotice("destructive", message);
+      showNotice("destructive", toUserMessage(err, "Gagal memuat bahan baku"));
     }
   }, []);
 
   const loadOutbounds = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${OUTBOUND_URL}?limit=50`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as OutboundRecord[];
+      const data = await httpJson<OutboundRecord[]>(`${OUTBOUND_URL}?limit=50`);
       setOutbounds(data);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Gagal memuat tracking";
-      showNotice("destructive", message);
+      showNotice("destructive", toUserMessage(err, "Gagal memuat tracking"));
     } finally {
       setLoading(false);
     }
@@ -194,23 +189,57 @@ export function RawMaterialsOutboundTrackingPage() {
     }));
   };
 
+  const validateLine = (line: LineForm) => {
+    const code = line.code.trim();
+    const batch = line.batchCode.trim();
+    if (!code) return "Pilih kode bahan baku.";
+    if (!rawLookup.has(code)) return "Kode tidak dikenal. Pilih dari daftar.";
+    if (!batch) return "Batch wajib diisi.";
+    if (!Number.isFinite(line.qty) || line.qty <= 0) return "Qty minimal 1.";
+    return null;
+  };
+
   const addLine = () => {
-    if (!lineForm.code || !lineForm.batchCode || !Number.isFinite(lineForm.qty)) {
-      setFormError("Kode, batch, dan qty wajib diisi.");
+    const err = validateLine(lineForm);
+    if (err) {
+      setFormError(err);
       return;
     }
-    if (lineForm.qty <= 0) {
-      setFormError("Qty minimal 1.");
-      return;
-    }
+    const code = lineForm.code.trim();
+    const batch = lineForm.batchCode.trim();
+    const qty = Number(lineForm.qty);
+    const matched = rawLookup.get(code);
     setFormError(null);
-    setLines((prev) => [
-      ...prev,
-      {
-        ...lineForm,
-        id: crypto.randomUUID(),
-      },
-    ]);
+    setLines((prev) => {
+      const existingIndex = prev.findIndex(
+        (line) => line.code === code && line.batchCode.trim() === batch,
+      );
+      if (existingIndex >= 0) {
+        const next = [...prev];
+        next[existingIndex] = {
+          ...next[existingIndex],
+          qty: next[existingIndex].qty + qty,
+          name: matched?.name ?? next[existingIndex].name,
+          note: lineForm.note || next[existingIndex].note,
+        };
+        showNotice("default", "Qty digabung ke baris yang sudah ada.");
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          ...lineForm,
+          code,
+          batchCode: batch,
+          qty,
+          name: matched?.name ?? lineForm.name,
+          category: matched?.category ?? lineForm.category,
+          subCategory: matched?.subCategory ?? lineForm.subCategory,
+          kind: matched?.kind ?? lineForm.kind,
+          id: crypto.randomUUID(),
+        },
+      ];
+    });
     resetLineForm();
   };
 
@@ -223,9 +252,21 @@ export function RawMaterialsOutboundTrackingPage() {
       setFormError("Nama pengrajin wajib diisi.");
       return;
     }
+    const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!isoDatePattern.test(date)) {
+      setFormError("Tanggal keluar tidak valid.");
+      return;
+    }
     if (lines.length === 0) {
       setFormError("Tambahkan minimal satu bahan baku.");
       return;
+    }
+    for (const line of lines) {
+      const err = validateLine(line);
+      if (err) {
+        setFormError(err);
+        return;
+      }
     }
     setFormError(null);
     setSaving(true);
@@ -245,12 +286,11 @@ export function RawMaterialsOutboundTrackingPage() {
           note: line.note || undefined,
         })),
       };
-      const res = await fetch(OUTBOUND_URL, {
+      await httpJson(OUTBOUND_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
       showNotice("default", "Bahan baku keluar berhasil disimpan.");
       setLines([]);
       setNote("");
@@ -259,8 +299,7 @@ export function RawMaterialsOutboundTrackingPage() {
       await loadOutbounds();
       await loadRawItems();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Gagal menyimpan.";
-      showNotice("destructive", message);
+      showNotice("destructive", toUserMessage(err, "Gagal menyimpan."));
     } finally {
       setSaving(false);
     }
@@ -272,17 +311,15 @@ export function RawMaterialsOutboundTrackingPage() {
       return;
     }
     try {
-      const res = await fetch(`${OUTBOUND_URL}/lines/${lineId}/receive`, {
+      await httpJson(`${OUTBOUND_URL}/lines/${lineId}/receive`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ receivedBy: receiverName.trim() }),
       });
-      if (!res.ok) throw new Error(await res.text());
       showNotice("default", "Status diterima diperbarui.");
       await loadOutbounds();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Gagal memperbarui.";
-      showNotice("destructive", message);
+      showNotice("destructive", toUserMessage(err, "Gagal memperbarui."));
     }
   };
 

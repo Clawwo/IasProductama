@@ -37,38 +37,45 @@ import {
   Filter,
   Layers3,
   PencilLine,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-} from "lucide-react";
-
-// Keep API construction consistent with other pages
-type Env = { VITE_API_BASE?: string };
-type StockStatus = "aman" | "menipis" | "kritis";
-const API_BASE = (
-  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? "http://localhost:3000"
-)
-  .trim()
-  .replace(/\/$/, "");
-const RAW_URL = `${API_BASE}/api/raw-materials`;
-
-export function RawMaterialsPage() {
-  const [rows, setRows] = useState<
-    Array<{
-      code: string;
-      name?: string;
-      category?: string;
-      subCategory?: string;
-      kind?: string;
-      stock: number;
-    }>
-  >([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const perPage = 15;
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" /> Jenis
+                  {selectedTypes.length > 0 ? `(${selectedTypes.length})` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56">
+                <DropdownMenuLabel>Pilih jenis</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem
+                  checked={selectedTypes.length === 0}
+                  onCheckedChange={(checked) => {
+                    if (checked) setSelectedTypes([]);
+                  }}
+                >
+                  Semua jenis
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                {types.map((t) => (
+                  <DropdownMenuCheckboxItem
+                    key={t}
+                    checked={selectedTypes.includes(t)}
+                    onCheckedChange={(checked) => {
+                      setSelectedTypes((prev) => {
+                        if (checked) return [...prev, t];
+                        return prev.filter((x) => x !== t);
+                      });
+                    }}
+                  >
+                    {t}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
   const [sortKey, setSortKey] = useState<"code" | "name" | "stock">("code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [statusFilter, setStatusFilter] = useState<"" | StockStatus>("");
@@ -98,9 +105,14 @@ export function RawMaterialsPage() {
   }, [rows]);
 
   const subCategories = useMemo(() => {
-  const types = useMemo(() => {
     const set = new Set<string>();
     rows.forEach((r) => r.subCategory && set.add(r.subCategory));
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const types = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.kind && set.add(r.kind));
     return Array.from(set).sort();
   }, [rows]);
 
@@ -175,7 +187,12 @@ export function RawMaterialsPage() {
         !bahanFilterActive ||
         r.category !== "Bahan Baku" ||
         (r.subCategory && bahanSubCategories.includes(r.subCategory));
-      return textMatch && statusMatch && catMatch && subCatMatch && bahanSubMatch;
+      const typeMatch =
+        selectedTypes.length === 0 || (r.kind && selectedTypes.includes(r.kind));
+
+      return (
+        textMatch && statusMatch && catMatch && subCatMatch && bahanSubMatch && typeMatch
+      );
     });
   }, [
     rows,
@@ -186,13 +203,8 @@ export function RawMaterialsPage() {
     selectedCategories,
     selectedSubCategories,
     bahanSubCategories,
+    selectedTypes,
   ]);
-      const typeMatch =
-        selectedTypes.length === 0 ||
-        (r.subCategory && selectedTypes.includes(r.subCategory));
-      return textMatch && statusMatch && catMatch && typeMatch;
-    });
-  }, [rows, search, sortDir, sortKey, statusFilter, selectedCategories, selectedTypes]);
 
   const totalStock = useMemo(
     () => filtered.reduce((sum, r) => sum + r.stock, 0),
@@ -537,6 +549,13 @@ export function RawMaterialsPage() {
                     }}
                   >
                     {cat}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
                   <Filter className="size-4" /> Jenis
                   {selectedTypes.length > 0 ? `(${selectedTypes.length})` : ""}
                 </Button>
