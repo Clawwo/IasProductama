@@ -37,56 +37,52 @@ import {
   Filter,
   Layers3,
   PencilLine,
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Filter className="size-4" /> Jenis
-                  {selectedTypes.length > 0 ? `(${selectedTypes.length})` : ""}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
-                <DropdownMenuLabel>Pilih jenis</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  checked={selectedTypes.length === 0}
-                  onCheckedChange={(checked) => {
-                    if (checked) setSelectedTypes([]);
-                  }}
-                >
-                  Semua jenis
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuSeparator />
-                {types.map((t) => (
-                  <DropdownMenuCheckboxItem
-                    key={t}
-                    checked={selectedTypes.includes(t)}
-                    onCheckedChange={(checked) => {
-                      setSelectedTypes((prev) => {
-                        if (checked) return [...prev, t];
-                        return prev.filter((x) => x !== t);
-                      });
-                    }}
-                  >
-                    {t}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
+
+type Env = { VITE_API_BASE?: string };
+type StockStatus = "aman" | "menipis" | "kritis";
+const API_BASE = (
+  (import.meta as { env?: Env }).env?.VITE_API_BASE ?? "http://localhost:3000"
+)
+  .trim()
+  .replace(/\/$/, "");
+const RAW_URL = `${API_BASE}/api/raw-materials`;
+
+export function RawMaterialsPage() {
+  const [rows, setRows] = useState<
+    Array<{
+      code: string;
+      name?: string;
+      category?: string;
+      subCategory?: string;
+      kind?: string;
+      stock: number;
+    }>
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 15;
   const [sortKey, setSortKey] = useState<"code" | "name" | "stock">("code");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [statusFilter, setStatusFilter] = useState<"" | StockStatus>("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>([]);
+  const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>(
+    [],
+  );
   const [bahanSubCategories, setBahanSubCategories] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<(typeof rows)[number] | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<(typeof rows)[number] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<
+    (typeof rows)[number] | null
+  >(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     code: "",
@@ -182,16 +178,23 @@ import {
         selectedSubCategories.length === 0 ||
         (r.subCategory && selectedSubCategories.includes(r.subCategory));
       const bahanFilterActive =
-        selectedCategories.includes("Bahan Baku") && bahanSubCategories.length > 0;
+        selectedCategories.includes("Bahan Baku") &&
+        bahanSubCategories.length > 0;
       const bahanSubMatch =
         !bahanFilterActive ||
         r.category !== "Bahan Baku" ||
         (r.subCategory && bahanSubCategories.includes(r.subCategory));
       const typeMatch =
-        selectedTypes.length === 0 || (r.kind && selectedTypes.includes(r.kind));
+        selectedTypes.length === 0 ||
+        (r.kind && selectedTypes.includes(r.kind));
 
       return (
-        textMatch && statusMatch && catMatch && subCatMatch && bahanSubMatch && typeMatch
+        textMatch &&
+        statusMatch &&
+        catMatch &&
+        subCatMatch &&
+        bahanSubMatch &&
+        typeMatch
       );
     });
   }, [
@@ -208,7 +211,7 @@ import {
 
   const totalStock = useMemo(
     () => filtered.reduce((sum, r) => sum + r.stock, 0),
-    [filtered]
+    [filtered],
   );
   const totalItems = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
@@ -220,7 +223,14 @@ import {
 
   function openAddForm() {
     setEditing(null);
-    setForm({ code: "", name: "", category: "", subCategory: "", kind: "", stock: 0 });
+    setForm({
+      code: "",
+      name: "",
+      category: "",
+      subCategory: "",
+      kind: "",
+      stock: 0,
+    });
     setFormError(null);
     setShowForm(true);
   }
@@ -357,7 +367,7 @@ import {
               ? `"${value.replace(/"/g, '""')}"`
               : value;
           })
-          .join(",")
+          .join(","),
       )
       .join("\n");
 
@@ -400,7 +410,7 @@ import {
         variant="outline"
         className={cn(
           "flex items-center gap-2 px-3 py-1 text-xs font-semibold",
-          cfg.cls
+          cfg.cls,
         )}
       >
         <span className="size-2 rounded-full bg-current" />
@@ -426,7 +436,9 @@ import {
                 <p className="text-[11px] uppercase tracking-wide text-slate-500">
                   Total item
                 </p>
-                <p className="text-lg font-semibold text-slate-900">{totalItems}</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {totalItems}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
@@ -437,7 +449,9 @@ import {
                 <p className="text-[11px] uppercase tracking-wide text-slate-500">
                   Total stok
                 </p>
-                <p className="text-lg font-semibold text-slate-900">{totalStock}</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {totalStock}
+                </p>
               </div>
             </div>
           </div>
@@ -451,7 +465,10 @@ import {
             <Download className="mr-2 size-4" />
             Export CSV
           </Button>
-          <Button className="bg-sky-600 text-white hover:bg-sky-700" onClick={openAddForm}>
+          <Button
+            className="bg-sky-600 text-white hover:bg-sky-700"
+            onClick={openAddForm}
+          >
             <Plus className="mr-2 size-4" />
             Tambah Barang
           </Button>
@@ -533,9 +550,9 @@ import {
                   : Array.from(
                       new Set(
                         selectedCategories.flatMap((cat) =>
-                          Array.from(subCategoriesByCategory.get(cat) ?? [])
-                        )
-                      )
+                          Array.from(subCategoriesByCategory.get(cat) ?? []),
+                        ),
+                      ),
                     ).sort()
                 ).map((cat) => (
                   <DropdownMenuCheckboxItem
@@ -600,7 +617,9 @@ import {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-56">
-                  <DropdownMenuLabel>Pilih subkategori (Bahan Baku)</DropdownMenuLabel>
+                  <DropdownMenuLabel>
+                    Pilih subkategori (Bahan Baku)
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuCheckboxItem
                     checked={bahanSubCategories.length === 0}
@@ -660,7 +679,9 @@ import {
           <Table>
             <TableHeader className="bg-slate-100">
               <TableRow>
-                <TableHead className="w-12 font-semibold text-slate-800">No</TableHead>
+                <TableHead className="w-12 font-semibold text-slate-800">
+                  No
+                </TableHead>
                 <TableHead className="font-semibold text-slate-800">
                   <button
                     className="inline-flex items-center gap-1"
@@ -677,9 +698,15 @@ import {
                     Nama
                   </button>
                 </TableHead>
-                <TableHead className="font-semibold text-slate-800">Status</TableHead>
-                <TableHead className="font-semibold text-slate-800 text-right">Stok</TableHead>
-                <TableHead className="font-semibold text-slate-800 text-right">Aksi</TableHead>
+                <TableHead className="font-semibold text-slate-800">
+                  Status
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800 text-right">
+                  Stok
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800 text-right">
+                  Aksi
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -715,12 +742,16 @@ import {
                   const rowNumber = (currentPage - 1) * perPage + idx + 1;
                   return (
                     <TableRow key={row.code} className="odd:bg-slate-50">
-                      <TableCell className="text-slate-500">{rowNumber}</TableCell>
+                      <TableCell className="text-slate-500">
+                        {rowNumber}
+                      </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         {row.code}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{row.name ?? row.code}</div>
+                        <div className="font-medium">
+                          {row.name ?? row.code}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={getStatus(row.stock)} />
@@ -743,7 +774,9 @@ import {
         </div>
         <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
           <span>
-            Halaman <span className="font-semibold text-slate-900">{currentPage}</span> dari {totalPages}
+            Halaman{" "}
+            <span className="font-semibold text-slate-900">{currentPage}</span>{" "}
+            dari {totalPages}
           </span>
           <Pager className="justify-end gap-2">
             <PaginationContent>
@@ -777,12 +810,21 @@ import {
       {pendingDelete ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-semibold text-slate-900">Hapus barang?</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Hapus barang?
+            </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Barang <span className="font-semibold">{pendingDelete.name ?? pendingDelete.code}</span> akan dihapus.
+              Barang{" "}
+              <span className="font-semibold">
+                {pendingDelete.name ?? pendingDelete.code}
+              </span>{" "}
+              akan dihapus.
             </p>
             <div className="mt-6 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              <Button
+                variant="secondary"
+                onClick={() => setPendingDelete(null)}
+              >
                 Batal
               </Button>
               <Button
@@ -820,58 +862,82 @@ import {
 
             <div className="mt-6 space-y-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Kode</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Kode
+                </label>
                 <Input
                   value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, code: e.target.value }))
+                  }
                   placeholder="Kode unik"
                   className="h-11"
                   disabled={!!editing}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Nama</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Nama
+                </label>
                 <Input
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
                   placeholder="Nama barang"
                   className="h-11"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Kategori</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Kategori
+                </label>
                 <Input
                   value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, category: e.target.value }))
+                  }
                   placeholder="Kategori"
                   className="h-11"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Subkategori</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Subkategori
+                </label>
                 <Input
                   value={form.subCategory}
-                  onChange={(e) => setForm((f) => ({ ...f, subCategory: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, subCategory: e.target.value }))
+                  }
                   placeholder="Subkategori"
                   className="h-11"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Jenis</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Jenis
+                </label>
                 <Input
                   value={form.kind}
-                  onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, kind: e.target.value }))
+                  }
                   placeholder="Jenis (opsional)"
                   className="h-11"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Stok</label>
+                <label className="text-sm font-medium text-slate-700">
+                  Stok
+                </label>
                 <Input
                   type="number"
                   min={0}
                   value={form.stock}
-                  onChange={(e) => setForm((f) => ({ ...f, stock: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, stock: Number(e.target.value) }))
+                  }
                   className="h-11"
                 />
               </div>
@@ -898,7 +964,13 @@ import {
   );
 }
 
-function ActionsMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+function ActionsMenu({
+  onEdit,
+  onDelete,
+}: {
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
