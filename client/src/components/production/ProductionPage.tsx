@@ -20,12 +20,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Calendar,
   Factory,
+  Filter,
   Plus,
   Search,
   StickyNote,
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { httpJson, toUserMessage } from "@/lib/http";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = (
@@ -35,6 +37,7 @@ const PRODUCTION_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/produ
 const PRODUCTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/products`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const BOM_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/bom`;
+const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 type ToastVariant = "default" | "destructive";
 type Toast = {
@@ -86,6 +89,10 @@ function bomKey(code?: string, name?: string) {
   return normalize(code || name);
 }
 
+function isValidDateString(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 export function ProductionPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -94,6 +101,9 @@ export function ProductionPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [submitMessage, setSubmitMessage] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Belum disimpan");
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const [finishedLine, setFinishedLine] = useState<LineItem>({
     id: "seed-finished",
@@ -114,7 +124,11 @@ export function ProductionPage() {
   const [rawLines, setRawLines] = useState<LineItem[]>([]);
 
   const [finishedSearch, setFinishedSearch] = useState("");
+  const [finishedType, setFinishedType] = useState("all");
+  const [finishedSubType, setFinishedSubType] = useState("all");
   const [rawSearch, setRawSearch] = useState("");
+  const [rawType, setRawType] = useState("all");
+  const [rawSubType, setRawSubType] = useState("all");
   const [finishedHighlight, setFinishedHighlight] = useState(0);
   const [rawHighlight, setRawHighlight] = useState(0);
   const [finishedDropdownOpen, setFinishedDropdownOpen] = useState(false);
@@ -132,7 +146,7 @@ export function ProductionPage() {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 4200);
     },
-    []
+    [],
   );
 
   const fetchData = useCallback(async () => {
@@ -158,6 +172,86 @@ export function ProductionPage() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    const stored = sessionStorage.getItem("draft:pending-load");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as {
+        id?: string;
+        type?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (parsed.type !== "PRODUCTION" || !parsed.payload) return;
+      const payload = parsed.payload as {
+        date?: unknown;
+        note?: unknown;
+        finishedLines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+        }>;
+        rawLines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+          sourceType?: unknown;
+          auto?: unknown;
+        }>;
+      };
+
+      setDate(
+        typeof payload.date === "string" && payload.date
+          ? payload.date.slice(0, 10)
+          : date,
+      );
+      setNote(typeof payload.note === "string" ? payload.note : "");
+
+      const incomingFinished = Array.isArray(payload.finishedLines)
+        ? payload.finishedLines.map((line) => ({
+            id: crypto.randomUUID(),
+            code: typeof line.code === "string" ? line.code : "",
+            name: typeof line.name === "string" ? line.name : "",
+            qty:
+              typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
+            note: typeof line.note === "string" ? line.note : undefined,
+          }))
+        : [];
+
+      const incomingRaw: LineItem[] = Array.isArray(payload.rawLines)
+        ? payload.rawLines.map((line) => ({
+            id: crypto.randomUUID(),
+            code: typeof line.code === "string" ? line.code : "",
+            name: typeof line.name === "string" ? line.name : "",
+            qty:
+              typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
+            note: typeof line.note === "string" ? line.note : undefined,
+            sourceType:
+              line.sourceType === "ITEM" || line.sourceType === "BAHAN_BAKU"
+                ? line.sourceType
+                : "BAHAN_BAKU",
+            auto: Boolean(line.auto),
+          }))
+        : [];
+
+      if (incomingFinished.length) {
+        setFinishedLines(incomingFinished.filter((l) => l.code || l.name));
+      }
+      if (incomingRaw.length) {
+        setRawLines(incomingRaw.filter((l) => l.code || l.name));
+      }
+
+      setDraftStatus("Draft dimuat");
+      setDraftId(typeof parsed.id === "string" ? parsed.id : null);
+      pushToast("default", "Draft produksi dimuat.");
+    } catch {
+      pushToast("destructive", "Draft produksi tidak bisa dibaca.");
+    } finally {
+      sessionStorage.removeItem("draft:pending-load");
+    }
+  }, [date, pushToast]);
+
   const rawNameIndex = useMemo(() => {
     const map = new Map<string, RemoteItem>();
     rawItems.forEach((it) => {
@@ -168,9 +262,29 @@ export function ProductionPage() {
 
   const mergedFinishedItems = useMemo(() => products, [products]);
 
+  const finishedTypes = useMemo(() => {
+    const set = new Set<string>();
+    mergedFinishedItems.forEach((item) => {
+      if (item.category) set.add(item.category);
+    });
+    return Array.from(set).sort();
+  }, [mergedFinishedItems]);
+
+  const finishedSubTypes = useMemo(() => {
+    const set = new Set<string>();
+    mergedFinishedItems.forEach((item) => {
+      if (finishedType !== "all" && item.category !== finishedType) return;
+      if (item.subCategory) set.add(item.subCategory);
+    });
+    return Array.from(set).sort();
+  }, [mergedFinishedItems, finishedType]);
+
   const finishedFiltered = useMemo(() => {
     const term = finishedSearch.toLowerCase();
     const list = mergedFinishedItems.filter((it) => {
+      if (finishedType !== "all" && it.category !== finishedType) return false;
+      if (finishedSubType !== "all" && it.subCategory !== finishedSubType)
+        return false;
       if (!term) return true;
       return (
         it.code.toLowerCase().includes(term) ||
@@ -178,11 +292,40 @@ export function ProductionPage() {
       );
     });
     return list.slice(0, 50);
-  }, [mergedFinishedItems, finishedSearch]);
+  }, [mergedFinishedItems, finishedSearch, finishedType, finishedSubType]);
+
+  useEffect(() => {
+    setFinishedHighlight(0);
+    if (
+      finishedSubType !== "all" &&
+      !finishedSubTypes.includes(finishedSubType)
+    ) {
+      setFinishedSubType("all");
+    }
+  }, [finishedSearch, finishedType, finishedSubType, finishedSubTypes]);
+
+  const rawTypes = useMemo(() => {
+    const set = new Set<string>();
+    rawItems.forEach((item) => {
+      if (item.category) set.add(item.category);
+    });
+    return Array.from(set).sort();
+  }, [rawItems]);
+
+  const rawSubTypes = useMemo(() => {
+    const set = new Set<string>();
+    rawItems.forEach((item) => {
+      if (rawType !== "all" && item.category !== rawType) return;
+      if (item.subCategory) set.add(item.subCategory);
+    });
+    return Array.from(set).sort();
+  }, [rawItems, rawType]);
 
   const rawFiltered = useMemo(() => {
     const term = rawSearch.toLowerCase();
     const list = rawItems.filter((it) => {
+      if (rawType !== "all" && it.category !== rawType) return false;
+      if (rawSubType !== "all" && it.subCategory !== rawSubType) return false;
       if (!term) return true;
       return (
         it.code.toLowerCase().includes(term) ||
@@ -190,7 +333,14 @@ export function ProductionPage() {
       );
     });
     return list.slice(0, 50);
-  }, [rawItems, rawSearch]);
+  }, [rawItems, rawSearch, rawType, rawSubType]);
+
+  useEffect(() => {
+    setRawHighlight(0);
+    if (rawSubType !== "all" && !rawSubTypes.includes(rawSubType)) {
+      setRawSubType("all");
+    }
+  }, [rawSearch, rawType, rawSubType, rawSubTypes]);
 
   // Rebuild auto raw lines from BOM whenever finished lines or BOM cache changes
   useEffect(() => {
@@ -199,7 +349,12 @@ export function ProductionPage() {
 
       const aggregate = new Map<
         string,
-        { code?: string; name: string; qty: number; sourceType?: "ITEM" | "BAHAN_BAKU" }
+        {
+          code?: string;
+          name: string;
+          qty: number;
+          sourceType?: "ITEM" | "BAHAN_BAKU";
+        }
       >();
 
       finishedLines.forEach((finished) => {
@@ -217,7 +372,8 @@ export function ProductionPage() {
           const rawMeta = line.code
             ? rawItems.find((it) => it.code === line.code)
             : rawNameIndex.get(normalize(name));
-          const sourceType = line.sourceType ?? (rawMeta ? "BAHAN_BAKU" : "ITEM");
+          const sourceType =
+            line.sourceType ?? (rawMeta ? "BAHAN_BAKU" : "ITEM");
           const current = aggregate.get(aggKey) ?? {
             code: line.code ?? undefined,
             name,
@@ -239,7 +395,7 @@ export function ProductionPage() {
           note: undefined,
           sourceType: v.sourceType ?? "BAHAN_BAKU",
           auto: true,
-        })
+        }),
       );
 
       return [...manual, ...autoLines];
@@ -253,8 +409,8 @@ export function ProductionPage() {
 
       const params = new URLSearchParams();
       if (item.code) params.append("code", item.code);
-      else if (item.name) params.append("name", item.name);
-      else return null;
+      if (item.name) params.append("name", item.name);
+      if (!item.code && !item.name) return null;
 
       try {
         const res = await fetch(`${BOM_URL}?${params.toString()}`);
@@ -273,7 +429,7 @@ export function ProductionPage() {
         return null;
       }
     },
-    [bomCache, pushToast]
+    [bomCache, pushToast],
   );
 
   // Prefetch BOM for all finished lines that are not yet cached
@@ -289,8 +445,8 @@ export function ProductionPage() {
         if (!key) continue;
         const params = new URLSearchParams();
         if (line.code) params.append("code", line.code);
-        else if (line.name) params.append("name", line.name);
-        else continue;
+        if (line.name) params.append("name", line.name);
+        if (!line.code && !line.name) continue;
 
         try {
           const res = await fetch(`${BOM_URL}?${params.toString()}`);
@@ -330,7 +486,7 @@ export function ProductionPage() {
                     : newNote
                   : l.note,
               }
-            : l
+            : l,
         );
       }
       return [
@@ -350,7 +506,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "BOM tidak ditemukan",
-        `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`
+        `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`,
       );
     } else {
       const bomKey =
@@ -358,7 +514,11 @@ export function ProductionPage() {
         bomEntry.productCode ??
         finishedLine.name ??
         finishedLine.code;
-      pushToast("default", `BOM ${bomKey} siap`, "Baris bahan akan terisi otomatis.");
+      pushToast(
+        "default",
+        `BOM ${bomKey} siap`,
+        "Baris bahan akan terisi otomatis.",
+      );
     }
 
     setFinishedLine({
@@ -395,7 +555,7 @@ export function ProductionPage() {
                     : newNote
                   : l.note,
               }
-            : l
+            : l,
         );
       }
       return [
@@ -428,8 +588,53 @@ export function ProductionPage() {
     setRawLines((prev) => prev.filter((l) => l.id !== id));
   }
 
+  async function handleSaveDraft() {
+    const payload = {
+      date,
+      note: note.trim() || undefined,
+      finishedLines: finishedLines.map((l) => ({
+        code: l.code,
+        name: l.name,
+        qty: l.qty,
+        note: l.note,
+      })),
+    };
+
+    // Keep manual and auto raw lines; auto lines will be regenerated but persisted for completeness
+    const rawPayload = rawLines.map((l) => ({
+      code: l.code,
+      name: l.name,
+      qty: l.qty,
+      note: l.note,
+      sourceType: l.sourceType ?? "BAHAN_BAKU",
+      auto: Boolean(l.auto),
+    }));
+
+    try {
+      setDraftSaving(true);
+      const isUpdate = Boolean(draftId);
+      const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
+      const method = isUpdate ? "PUT" : "POST";
+      const data = await httpJson<{ id?: string }>(targetUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "PRODUCTION",
+          payload: { ...payload, rawLines: rawPayload },
+        }),
+      });
+      if (data?.id) setDraftId(data.id);
+      setDraftStatus("Draft tersimpan");
+      pushToast("default", "Draft produksi disimpan.");
+    } catch (err: unknown) {
+      pushToast("destructive", toUserMessage(err, "Gagal menyimpan draft."));
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
   async function handleSubmit() {
-    if (!date) {
+    if (!date || !isValidDateString(date)) {
       pushToast("destructive", "Tanggal wajib", "Isi tanggal produksi.");
       return;
     }
@@ -437,7 +642,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "Barang jadi kosong",
-        "Tambahkan minimal satu barang jadi."
+        "Tambahkan minimal satu barang jadi.",
       );
       return;
     }
@@ -445,7 +650,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "Bahan baku kosong",
-        "Tambahkan minimal satu bahan baku."
+        "Tambahkan minimal satu bahan baku.",
       );
       return;
     }
@@ -483,16 +688,11 @@ export function ProductionPage() {
     try {
       setSubmitStatus("loading");
       setSubmitMessage("");
-      const res = await fetch(PRODUCTION_URL, {
+      const data = await httpJson<{ code?: string }>(PRODUCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan produksi.");
-      }
-      const data = (await res.json()) as { code?: string };
       const message = data?.code
         ? `Berhasil disimpan. Kode: ${data.code}`
         : "Berhasil disimpan.";
@@ -516,9 +716,11 @@ export function ProductionPage() {
         note: "",
         sourceType: "BAHAN_BAKU",
       });
+      setDraftStatus("Belum disimpan");
+      setDraftId(null);
       fetchData();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
+      const msg = toUserMessage(err, "Gagal menyimpan.");
       setSubmitStatus("error");
       setSubmitMessage(msg);
       pushToast("destructive", "Gagal", msg);
@@ -527,11 +729,11 @@ export function ProductionPage() {
 
   const finishedTotalQty = useMemo(
     () => finishedLines.reduce((sum, l) => sum + l.qty, 0),
-    [finishedLines]
+    [finishedLines],
   );
   const rawTotalQty = useMemo(
     () => rawLines.reduce((sum, l) => sum + l.qty, 0),
-    [rawLines]
+    [rawLines],
   );
 
   return (
@@ -574,7 +776,7 @@ export function ProductionPage() {
             />
             <SummaryCard
               label="Status"
-              value={submitStatus === "loading" ? "Menyimpan..." : "Draft"}
+              value={submitStatus === "loading" ? "Menyimpan..." : draftStatus}
             />
           </div>
         </header>
@@ -619,6 +821,55 @@ export function ProductionPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Jenis produk
+                  {finishedType !== "all" ? `: ${finishedType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setFinishedType("all")}>
+                  Semua jenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {finishedTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setFinishedType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Subjenis
+                  {finishedSubType !== "all" ? `: ${finishedSubType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setFinishedSubType("all")}>
+                  Semua subjenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {finishedSubTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setFinishedSubType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           <LineComposer
             dropdownOpen={finishedDropdownOpen}
             setDropdownOpen={setFinishedDropdownOpen}
@@ -656,6 +907,55 @@ export function ProductionPage() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Jenis bahan
+                  {rawType !== "all" ? `: ${rawType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setRawType("all")}>
+                  Semua jenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {rawTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setRawType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Subjenis
+                  {rawSubType !== "all" ? `: ${rawSubType}` : ""}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-52">
+                <DropdownMenuItem onSelect={() => setRawSubType("all")}>
+                  Semua subjenis
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {rawSubTypes.map((type) => (
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setRawSubType(type)}
+                  >
+                    {type}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
           <LineComposer
             dropdownOpen={rawDropdownOpen}
             setDropdownOpen={setRawDropdownOpen}
@@ -680,6 +980,9 @@ export function ProductionPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1 text-sm text-slate-600">
+            <span className="block text-xs text-slate-500">
+              Status draft: {draftStatus}
+            </span>
             {submitStatus === "success" ? (
               <span className="text-emerald-700">{submitMessage}</span>
             ) : null}
@@ -687,14 +990,24 @@ export function ProductionPage() {
               <span className="text-red-700">{submitMessage}</span>
             ) : null}
           </div>
-          <Button
-            onClick={handleSubmit}
-            disabled={submitStatus === "loading"}
-            className="w-full sm:w-auto"
-          >
-            <Factory className="mr-2 size-4" />
-            {submitStatus === "loading" ? "Menyimpan..." : "Catat produksi"}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={draftSaving || submitStatus === "loading"}
+              className="w-full sm:w-auto"
+            >
+              {draftSaving ? "Menyimpan draft..." : "Simpan draft"}
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitStatus === "loading"}
+              className="w-full sm:w-auto"
+            >
+              <Factory className="mr-2 size-4" />
+              {submitStatus === "loading" ? "Menyimpan..." : "Catat produksi"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -752,7 +1065,7 @@ function LineComposer({
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
                   setHighlightIndex((idx) =>
-                    Math.min(idx + 1, Math.max(visibleItems.length - 1, 0))
+                    Math.min(idx + 1, Math.max(visibleItems.length - 1, 0)),
                   );
                   return;
                 }
@@ -935,7 +1248,7 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
             "pointer-events-auto shadow-lg",
             toast.variant === "destructive"
               ? "border-red-200 bg-red-50 text-red-900"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>
