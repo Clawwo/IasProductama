@@ -27,6 +27,7 @@ import {
   Eye,
   RefreshCw,
   Search,
+  Package2,
 } from "lucide-react";
 import {
   Sheet,
@@ -43,7 +44,9 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .replace(/\/$/, "");
 const INBOUND_URL = `${API_BASE}/api/inbound`;
 const OUTBOUND_URL = `${API_BASE}/api/outbound`;
+const RAW_OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
 const ITEMS_URL = `${API_BASE}/api/items`;
+const RAW_ITEMS_URL = `${API_BASE}/api/raw-materials`;
 
 type LineApi = { code: string; qty: number; note?: string; name?: string };
 type InboundApi = {
@@ -65,9 +68,31 @@ type OutboundApi = {
   createdAt?: string;
 };
 
+type RawOutboundLineApi = {
+  materialCode?: string;
+  materialName?: string;
+  batchCode?: string;
+  qty: number;
+  note?: string;
+  status?: "OUT" | "RECEIVED";
+};
+
+type RawOutboundApi = {
+  id: string;
+  code: string;
+  artisan: string;
+  date: string;
+  note?: string | null;
+  status: "OUT" | "RECEIVED";
+  lines: RawOutboundLineApi[];
+  createdAt?: string;
+};
+
 type Movement = {
   id: string;
   direction: "Masuk" | "Keluar";
+  kind: "Barang" | "Bahan";
+  category: "Barang" | "Bahan baku" | "Produksi";
   txCode: string;
   recordId: string;
   itemCode: string;
@@ -78,6 +103,7 @@ type Movement = {
   rawTime: string;
   timestamp: number;
   note?: string;
+  batchCode?: string;
 };
 
 function formatDateTime(value: string) {
@@ -96,15 +122,22 @@ function formatDateTime(value: string) {
 
 export function RiwayatPage() {
   const [items, setItems] = useState<Array<{ code: string; name?: string }>>(
-    []
+    [],
   );
+  const [rawItems, setRawItems] = useState<
+    Array<{ code: string; name?: string }>
+  >([]);
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
+  const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "Masuk" | "Keluar">(
-    "all"
+    "all",
   );
+  const [categoryFilter, setCategoryFilter] = useState<
+    "all" | "Barang" | "Bahan baku" | "Produksi"
+  >("all");
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -113,10 +146,17 @@ export function RiwayatPage() {
   const [detailData, setDetailData] = useState<{
     txCode: string;
     direction: Movement["direction"];
+    kind: Movement["kind"];
     actor?: string;
     date: string;
     note?: string;
-    lines: Array<{ code: string; name?: string; qty: number; note?: string }>;
+    lines: Array<{
+      code: string;
+      name?: string;
+      qty: number;
+      note?: string;
+      batchCode?: string;
+    }>;
   } | null>(null);
   const perPage = 20;
 
@@ -124,13 +164,24 @@ export function RiwayatPage() {
     let cancelled = false;
     const loadItems = async () => {
       try {
-        const res = await fetch(ITEMS_URL);
-        if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as Array<{
+        const [resItems, resRaw] = await Promise.all([
+          fetch(ITEMS_URL),
+          fetch(RAW_ITEMS_URL),
+        ]);
+        if (!resItems.ok) throw new Error(await resItems.text());
+        if (!resRaw.ok) throw new Error(await resRaw.text());
+        const data = (await resItems.json()) as Array<{
           code: string;
           name?: string;
         }>;
-        if (!cancelled) setItems(data);
+        const rawData = (await resRaw.json()) as Array<{
+          code: string;
+          name?: string;
+        }>;
+        if (!cancelled) {
+          setItems(data);
+          setRawItems(rawData);
+        }
       } catch (err) {
         // leave items empty if it fails; riwayat will fallback to code
         console.warn("Gagal memuat data barang untuk riwayat", err);
@@ -146,16 +197,20 @@ export function RiwayatPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inRes, outRes] = await Promise.all([
+      const [inRes, outRes, rawOutRes] = await Promise.all([
         fetch(`${INBOUND_URL}?limit=200`),
         fetch(`${OUTBOUND_URL}?limit=200`),
+        fetch(`${RAW_OUTBOUND_URL}?limit=200`),
       ]);
       if (!inRes.ok) throw new Error(await inRes.text());
       if (!outRes.ok) throw new Error(await outRes.text());
+      if (!rawOutRes.ok) throw new Error(await rawOutRes.text());
       const inboundData = (await inRes.json()) as InboundApi[];
       const outboundData = (await outRes.json()) as OutboundApi[];
+      const rawOutboundData = (await rawOutRes.json()) as RawOutboundApi[];
       setInbound(inboundData);
       setOutbound(outboundData);
+      setRawOutbound(rawOutboundData);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal memuat riwayat.";
@@ -170,17 +225,21 @@ export function RiwayatPage() {
   }, [loadHistory]);
 
   const movements: Movement[] = useMemo(() => {
-    const nameMap = new Map(items.map((it) => [it.code, it.name]));
+    const nameMap = new Map(
+      [...items, ...rawItems].map((it) => [it.code, it.name]),
+    );
     const mapLines = (
       rows: Array<InboundApi | OutboundApi>,
       direction: Movement["direction"],
-      actorKey: "vendor" | "orderer"
-    ) =>
+      actorKey: "vendor" | "orderer",
+    ): Movement[] =>
       rows.flatMap((rec) => {
         const sourceDate = rec.createdAt ?? rec.date ?? "";
         return rec.lines.map((line, idx) => ({
           id: `${direction}-${rec.id}-${idx}-${line.code}`,
           direction,
+          kind: "Barang" as const,
+          category: "Barang" as const,
           txCode: rec.code ?? "-",
           recordId: rec.id,
           itemCode: line.code,
@@ -194,26 +253,62 @@ export function RiwayatPage() {
         }));
       });
 
+    const rawLines = rawOutbound
+      .filter((rec) => rec.status === "RECEIVED")
+      .flatMap((rec) => {
+        const sourceDate = rec.createdAt ?? rec.date ?? "";
+        return rec.lines
+          .filter((line) => line.status === "RECEIVED" || !line.status)
+          .map((line, idx) => {
+            const code = line.materialCode ?? "";
+            const name = line.materialName ?? nameMap.get(code) ?? code;
+            return {
+              id: `Bahan-${rec.id}-${idx}-${code}`,
+              direction: "Keluar" as const,
+              kind: "Bahan" as const,
+              category: "Bahan baku" as const,
+              txCode: rec.code ?? "-",
+              recordId: rec.id,
+              itemCode: code,
+              name,
+              qty: line.qty,
+              actor: rec.artisan,
+              time: formatDateTime(sourceDate),
+              rawTime: sourceDate,
+              timestamp: Date.parse(sourceDate) || 0,
+              note: line.note ?? rec.note ?? undefined,
+              batchCode: line.batchCode,
+            };
+          });
+      });
+
     const combined = [
       ...mapLines(inbound, "Masuk", "vendor"),
       ...mapLines(outbound, "Keluar", "orderer"),
+      ...rawLines,
     ];
 
     return combined.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inbound, outbound, items]);
+  }, [inbound, outbound, rawOutbound, items, rawItems]);
 
   const stats = useMemo(() => {
     const total = movements.length;
     const inboundRows = movements.filter((m) => m.direction === "Masuk");
     const outboundRows = movements.filter((m) => m.direction === "Keluar");
+    const outboundGoods = outboundRows.filter((m) => m.kind === "Barang");
+    const outboundRaw = outboundRows.filter((m) => m.kind === "Bahan");
     const inboundQty = inboundRows.reduce((sum, row) => sum + row.qty, 0);
     const outboundQty = outboundRows.reduce((sum, row) => sum + row.qty, 0);
+    const outboundRawQty = outboundRaw.reduce((sum, row) => sum + row.qty, 0);
     return {
       total,
       inboundCount: inboundRows.length,
       outboundCount: outboundRows.length,
+      outboundGoodsCount: outboundGoods.length,
+      outboundRawCount: outboundRaw.length,
       inboundQty,
       outboundQty,
+      outboundRawQty,
     };
   }, [movements]);
 
@@ -224,19 +319,21 @@ export function RiwayatPage() {
 
     return movements.filter((row) => {
       if (typeFilter !== "all" && row.direction !== typeFilter) return false;
+      if (categoryFilter !== "all" && row.category !== categoryFilter)
+        return false;
       if (fromTs && row.timestamp < fromTs) return false;
       if (toTs && row.timestamp > toTs) return false;
       if (!term) return true;
       const haystack = `${row.txCode} ${row.itemCode} ${row.name} ${
         row.actor ?? ""
-      } ${row.note ?? ""}`.toLowerCase();
+      } ${row.note ?? ""} ${row.batchCode ?? ""}`.toLowerCase();
       return haystack.includes(term);
     });
-  }, [movements, typeFilter, search, fromDate, toDate]);
+  }, [movements, typeFilter, categoryFilter, search, fromDate, toDate]);
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter, search, fromDate, toDate]);
+  }, [typeFilter, categoryFilter, search, fromDate, toDate]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / perPage));
   const currentPage = Math.min(page, pageCount);
@@ -258,7 +355,9 @@ export function RiwayatPage() {
       "Nama Barang",
       "Jumlah",
       "Satuan",
-      "Vendor/PO",
+      "Pihak",
+      "Tipe",
+      "Batch",
       "Keterangan",
     ];
     const csvRows = rows.map((row) => [
@@ -269,6 +368,8 @@ export function RiwayatPage() {
       Math.abs(row.qty),
       "pcs",
       row.actor ?? "",
+      row.kind,
+      row.batchCode ?? "",
       row.note ?? "",
     ]);
     const csv = [header, ...csvRows]
@@ -280,7 +381,7 @@ export function RiwayatPage() {
               ? `"${value.replace(/"/g, '""')}"`
               : value;
           })
-          .join(",")
+          .join(","),
       )
       .join("\n");
 
@@ -309,7 +410,42 @@ export function RiwayatPage() {
       setDetailData({
         txCode: match?.code ?? row.txCode,
         direction: row.direction,
+        kind: "Barang",
         actor: match?.vendor,
+        date: formatDateTime(match?.date ?? row.rawTime),
+        note: match?.note ?? row.note,
+        lines,
+      });
+      setDetailOpen(true);
+      return;
+    }
+
+    if (row.kind === "Bahan") {
+      const match =
+        rawOutbound.find((rec) => rec.code === row.txCode) ??
+        rawOutbound.find((rec) => rec.id === row.recordId);
+      const lines = (
+        match?.lines ?? [
+          {
+            materialCode: row.itemCode,
+            materialName: row.name,
+            qty: Math.abs(row.qty),
+            note: row.note,
+            batchCode: row.batchCode,
+          },
+        ]
+      ).map((l) => ({
+        code: l.materialCode ?? row.itemCode,
+        name: l.materialName ?? row.name,
+        qty: Math.abs(l.qty),
+        note: l.note ?? row.note,
+        batchCode: l.batchCode ?? row.batchCode,
+      }));
+      setDetailData({
+        txCode: match?.code ?? row.txCode,
+        direction: row.direction,
+        kind: row.kind,
+        actor: row.actor ?? match?.artisan,
         date: formatDateTime(match?.date ?? row.rawTime),
         note: match?.note ?? row.note,
         lines,
@@ -332,7 +468,8 @@ export function RiwayatPage() {
     setDetailData({
       txCode: match?.code ?? row.txCode,
       direction: row.direction,
-      actor: match?.orderer,
+      kind: row.kind,
+      actor: row.actor ?? match?.orderer,
       date: formatDateTime(match?.date ?? row.rawTime),
       note: match?.note ?? row.note,
       lines,
@@ -403,9 +540,27 @@ export function RiwayatPage() {
             </span>
             <div>
               <p className="text-sm text-muted-foreground">Barang keluar</p>
-              <p className="text-lg font-semibold">{stats.outboundCount} dok</p>
+              <p className="text-lg font-semibold">
+                {stats.outboundGoodsCount} baris
+              </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundQty} pcs
+                {stats.outboundQty - stats.outboundRawQty} pcs
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="grid size-9 place-items-center rounded-lg bg-amber-50 text-amber-700">
+              <Package2 className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm text-muted-foreground">Bahan baku keluar</p>
+              <p className="text-lg font-semibold">
+                {stats.outboundRawCount} baris
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {stats.outboundRawQty} pcs
               </p>
             </div>
           </div>
@@ -441,6 +596,18 @@ export function RiwayatPage() {
             <option value="Masuk">Masuk</option>
             <option value="Keluar">Keluar</option>
           </select>
+          <select
+            className="h-10 rounded-lg border px-3 text-sm shadow-sm"
+            value={categoryFilter}
+            onChange={(e) =>
+              setCategoryFilter(e.target.value as typeof categoryFilter)
+            }
+          >
+            <option value="all">Semua kategori</option>
+            <option value="Barang">Barang</option>
+            <option value="Bahan baku">Bahan baku</option>
+            <option value="Produksi">Produksi</option>
+          </select>
           <Input
             type="date"
             className="h-10 w-40"
@@ -461,14 +628,14 @@ export function RiwayatPage() {
           <Table>
             <TableHeader className="bg-slate-100">
               <TableRow>
+                <TableHead className="font-semibold text-slate-800 w-12">
+                  No
+                </TableHead>
                 <TableHead className="font-semibold text-slate-800">
                   Waktu
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
                   Kode transaksi
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Kode barang
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
                   Nama barang
@@ -477,13 +644,13 @@ export function RiwayatPage() {
                   Jenis
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
+                  Kategori
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
                   Qty
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
-                  Vendor
-                </TableHead>
-                <TableHead className="font-semibold text-slate-800">
-                  Catatan
+                  Pihak
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800 text-center">
                   Detail
@@ -494,7 +661,7 @@ export function RiwayatPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={8}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat riwayat...
@@ -503,7 +670,7 @@ export function RiwayatPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={8}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -512,31 +679,31 @@ export function RiwayatPage() {
               ) : pageRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={8}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data. Ubah filter atau catat transaksi baru.
                   </TableCell>
                 </TableRow>
               ) : (
-                pageRows.map((row) => {
+                pageRows.map((row, idx) => {
                   const isIn = row.direction === "Masuk";
                   return (
                     <TableRow key={row.id} className="odd:bg-slate-50">
+                      <TableCell className="text-muted-foreground">
+                        {start + idx + 1}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {row.time}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-slate-700">
                         {row.txCode}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {row.itemCode}
-                      </TableCell>
                       <TableCell>
                         <div className="font-medium">{row.name}</div>
-                        <p className="text-xs text-muted-foreground">
-                          {row.note}
-                        </p>
+                        <div className="text-xs text-muted-foreground">
+                          {row.itemCode}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -544,10 +711,24 @@ export function RiwayatPage() {
                             "rounded-full px-3",
                             isIn
                               ? "bg-emerald-50 text-emerald-700"
-                              : "bg-orange-50 text-orange-700"
+                              : "bg-orange-50 text-orange-700",
                           )}
                         >
                           {row.direction}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={cn(
+                            "rounded-full px-3",
+                            row.category === "Barang"
+                              ? "bg-slate-100 text-slate-700"
+                              : row.category === "Bahan baku"
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-blue-50 text-blue-700",
+                          )}
+                        >
+                          {row.category}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-semibold">
@@ -555,9 +736,6 @@ export function RiwayatPage() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {row.actor ?? "-"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.note ?? "-"}
                       </TableCell>
                       <TableCell className="text-center">
                         <button
@@ -575,51 +753,38 @@ export function RiwayatPage() {
             </TableBody>
           </Table>
         </div>
-        <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-          <span>
-            Menampilkan {pageRows.length} dari {filtered.length} riwayat
-          </span>
-          <Pager>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (currentPage > 1) setPage(currentPage - 1);
-                  }}
-                  aria-disabled={currentPage === 1}
-                  tabIndex={currentPage === 1 ? -1 : 0}
-                />
-              </PaginationItem>
-              {Array.from({ length: pageCount }).map((_, idx) => {
-                const pageNumber = idx + 1;
-                return (
-                  <PaginationItem key={pageNumber}>
-                    <PaginationLink
-                      isActive={pageNumber === currentPage}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setPage(pageNumber);
-                      }}
-                    >
-                      {pageNumber}
-                    </PaginationLink>
-                  </PaginationItem>
-                );
-              })}
-              <PaginationItem>
-                <PaginationNext
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (currentPage < pageCount) setPage(currentPage + 1);
-                  }}
-                  aria-disabled={currentPage === pageCount}
-                  tabIndex={currentPage === pageCount ? -1 : 0}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pager>
-        </div>
+        <Pager className="justify-between px-4 py-3 text-sm text-muted-foreground">
+          <div>
+            Halaman{" "}
+            <span className="font-semibold text-slate-900">{currentPage}</span>{" "}
+            dari {pageCount}
+          </div>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (currentPage > 1) setPage(currentPage - 1);
+                }}
+              />
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationLink href="#" isActive size="default">
+                {currentPage}
+              </PaginationLink>
+            </PaginationItem>
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (currentPage < pageCount) setPage(currentPage + 1);
+                }}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pager>
       </div>
 
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
@@ -633,10 +798,22 @@ export function RiwayatPage() {
                     "rounded-full px-2 py-1 text-xs",
                     detailData.direction === "Masuk"
                       ? "bg-emerald-50 text-emerald-700"
-                      : "bg-orange-50 text-orange-700"
+                      : "bg-orange-50 text-orange-700",
                   )}
                 >
                   {detailData.direction}
+                </Badge>
+              ) : null}
+              {detailData ? (
+                <Badge
+                  className={cn(
+                    "rounded-full px-2 py-1 text-xs",
+                    detailData.kind === "Bahan"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-slate-100 text-slate-700",
+                  )}
+                >
+                  {detailData.kind}
                 </Badge>
               ) : null}
             </SheetTitle>
@@ -648,7 +825,13 @@ export function RiwayatPage() {
           {detailData ? (
             <div className="px-4 pb-6 space-y-4">
               <div className="rounded-lg border p-3 text-sm">
-                <p className="text-muted-foreground">Vendor/PO</p>
+                <p className="text-muted-foreground">
+                  {detailData.kind === "Bahan"
+                    ? "Pengrajin"
+                    : detailData.direction === "Masuk"
+                      ? "Vendor"
+                      : "Pemesan"}
+                </p>
                 <p className="font-medium">{detailData.actor ?? "-"}</p>
               </div>
               <div className="rounded-lg border p-3 text-sm">
@@ -657,7 +840,7 @@ export function RiwayatPage() {
               </div>
               <div className="rounded-lg border">
                 <div className="border-b px-4 py-3 font-semibold">
-                  Detail barang
+                  Detail barang/bahan
                 </div>
                 <div className="max-h-80 overflow-y-auto divide-y">
                   {detailData.lines.map((line, idx) => (
@@ -673,6 +856,11 @@ export function RiwayatPage() {
                           <p className="text-xs text-muted-foreground">
                             {line.code}
                           </p>
+                          {line.batchCode ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              Batch: {line.batchCode}
+                            </p>
+                          ) : null}
                         </div>
                         <span className="font-semibold">{line.qty} pcs</span>
                       </div>
