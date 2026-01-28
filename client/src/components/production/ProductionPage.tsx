@@ -146,7 +146,7 @@ export function ProductionPage() {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 4200);
     },
-    []
+    [],
   );
 
   const fetchData = useCallback(async () => {
@@ -185,7 +185,12 @@ export function ProductionPage() {
       const payload = parsed.payload as {
         date?: unknown;
         note?: unknown;
-        finishedLines?: Array<{ code?: unknown; name?: unknown; qty?: unknown; note?: unknown }>;
+        finishedLines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+        }>;
         rawLines?: Array<{
           code?: unknown;
           name?: unknown;
@@ -199,7 +204,7 @@ export function ProductionPage() {
       setDate(
         typeof payload.date === "string" && payload.date
           ? payload.date.slice(0, 10)
-          : date
+          : date,
       );
       setNote(typeof payload.note === "string" ? payload.note : "");
 
@@ -344,7 +349,12 @@ export function ProductionPage() {
 
       const aggregate = new Map<
         string,
-        { code?: string; name: string; qty: number; sourceType?: "ITEM" | "BAHAN_BAKU" }
+        {
+          code?: string;
+          name: string;
+          qty: number;
+          sourceType?: "ITEM" | "BAHAN_BAKU";
+        }
       >();
 
       finishedLines.forEach((finished) => {
@@ -362,7 +372,8 @@ export function ProductionPage() {
           const rawMeta = line.code
             ? rawItems.find((it) => it.code === line.code)
             : rawNameIndex.get(normalize(name));
-          const sourceType = line.sourceType ?? (rawMeta ? "BAHAN_BAKU" : "ITEM");
+          const sourceType =
+            line.sourceType ?? (rawMeta ? "BAHAN_BAKU" : "ITEM");
           const current = aggregate.get(aggKey) ?? {
             code: line.code ?? undefined,
             name,
@@ -384,7 +395,7 @@ export function ProductionPage() {
           note: undefined,
           sourceType: v.sourceType ?? "BAHAN_BAKU",
           auto: true,
-        })
+        }),
       );
 
       return [...manual, ...autoLines];
@@ -418,7 +429,7 @@ export function ProductionPage() {
         return null;
       }
     },
-    [bomCache, pushToast]
+    [bomCache, pushToast],
   );
 
   // Prefetch BOM for all finished lines that are not yet cached
@@ -475,7 +486,7 @@ export function ProductionPage() {
                     : newNote
                   : l.note,
               }
-            : l
+            : l,
         );
       }
       return [
@@ -495,7 +506,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "BOM tidak ditemukan",
-        `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`
+        `Tidak ada BOM untuk ${finishedLine.name}. Isi manual.`,
       );
     } else {
       const bomKey =
@@ -503,7 +514,11 @@ export function ProductionPage() {
         bomEntry.productCode ??
         finishedLine.name ??
         finishedLine.code;
-      pushToast("default", `BOM ${bomKey} siap`, "Baris bahan akan terisi otomatis.");
+      pushToast(
+        "default",
+        `BOM ${bomKey} siap`,
+        "Baris bahan akan terisi otomatis.",
+      );
     }
 
     setFinishedLine({
@@ -540,7 +555,7 @@ export function ProductionPage() {
                     : newNote
                   : l.note,
               }
-            : l
+            : l,
         );
       }
       return [
@@ -603,7 +618,10 @@ export function ProductionPage() {
       const data = await httpJson<{ id?: string }>(targetUrl, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "PRODUCTION", payload: { ...payload, rawLines: rawPayload } }),
+        body: JSON.stringify({
+          type: "PRODUCTION",
+          payload: { ...payload, rawLines: rawPayload },
+        }),
       });
       if (data?.id) setDraftId(data.id);
       setDraftStatus("Draft tersimpan");
@@ -624,7 +642,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "Barang jadi kosong",
-        "Tambahkan minimal satu barang jadi."
+        "Tambahkan minimal satu barang jadi.",
       );
       return;
     }
@@ -632,7 +650,7 @@ export function ProductionPage() {
       pushToast(
         "destructive",
         "Bahan baku kosong",
-        "Tambahkan minimal satu bahan baku."
+        "Tambahkan minimal satu bahan baku.",
       );
       return;
     }
@@ -711,11 +729,11 @@ export function ProductionPage() {
 
   const finishedTotalQty = useMemo(
     () => finishedLines.reduce((sum, l) => sum + l.qty, 0),
-    [finishedLines]
+    [finishedLines],
   );
   const rawTotalQty = useMemo(
     () => rawLines.reduce((sum, l) => sum + l.qty, 0),
-    [rawLines]
+    [rawLines],
   );
 
   return (
@@ -758,9 +776,7 @@ export function ProductionPage() {
             />
             <SummaryCard
               label="Status"
-              value={
-                submitStatus === "loading" ? "Menyimpan..." : draftStatus
-              }
+              value={submitStatus === "loading" ? "Menyimpan..." : draftStatus}
             />
           </div>
         </header>
@@ -906,7 +922,10 @@ export function ProductionPage() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {rawTypes.map((type) => (
-                  <DropdownMenuItem key={type} onSelect={() => setRawType(type)}>
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setRawType(type)}
+                  >
                     {type}
                   </DropdownMenuItem>
                 ))}
@@ -926,7 +945,10 @@ export function ProductionPage() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {rawSubTypes.map((type) => (
-                  <DropdownMenuItem key={type} onSelect={() => setRawSubType(type)}>
+                  <DropdownMenuItem
+                    key={type}
+                    onSelect={() => setRawSubType(type)}
+                  >
                     {type}
                   </DropdownMenuItem>
                 ))}
@@ -1043,7 +1065,7 @@ function LineComposer({
                 if (e.key === "ArrowDown") {
                   e.preventDefault();
                   setHighlightIndex((idx) =>
-                    Math.min(idx + 1, Math.max(visibleItems.length - 1, 0))
+                    Math.min(idx + 1, Math.max(visibleItems.length - 1, 0)),
                   );
                   return;
                 }
@@ -1226,7 +1248,7 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
             "pointer-events-auto shadow-lg",
             toast.variant === "destructive"
               ? "border-red-200 bg-red-50 text-red-900"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>

@@ -232,7 +232,7 @@ export function OutboundPage() {
       setDate(
         typeof payload.date === "string" && payload.date
           ? payload.date.slice(0, 10)
-          : date
+          : date,
       );
       setNote(typeof payload.note === "string" ? payload.note : "");
       const incomingLines = Array.isArray(payload.lines)
@@ -253,14 +253,14 @@ export function OutboundPage() {
       pushToast(
         "default",
         "Draft dimuat",
-        "Data draft barang keluar telah dimuat ke formulir."
+        "Data draft barang keluar telah dimuat ke formulir.",
       );
     } catch (err) {
       console.error("Gagal memuat draft keluar", err);
       pushToast(
         "destructive",
         "Gagal memuat draft",
-        "Draft tidak bisa dibaca."
+        "Draft tidak bisa dibaca.",
       );
     } finally {
       sessionStorage.removeItem("draft:pending-load");
@@ -297,7 +297,7 @@ export function OutboundPage() {
 
   const selectedItem = useMemo(
     () => mergedItems.find((it) => it.code === lineItem.code),
-    [mergedItems, lineItem.code]
+    [mergedItems, lineItem.code],
   );
 
   const categories = useMemo(() => {
@@ -693,7 +693,7 @@ export function OutboundPage() {
 
   const visibleItems = useMemo(
     () => filteredItems.slice(0, 50),
-    [filteredItems]
+    [filteredItems],
   );
 
   function addLine() {
@@ -736,7 +736,7 @@ export function OutboundPage() {
     pushToast(
       "default",
       "Baris ditambahkan",
-      `${lineItem.code} - ${lineItem.name}`
+      `${lineItem.code} - ${lineItem.name}`,
     );
   }
 
@@ -788,7 +788,7 @@ export function OutboundPage() {
       pushToast(
         "default",
         "Draft tersimpan",
-        "Draft barang keluar berhasil disimpan."
+        "Draft barang keluar berhasil disimpan.",
       );
     } catch (err: unknown) {
       const message =
@@ -848,14 +848,16 @@ export function OutboundPage() {
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
       setSubmitStatus("success");
       setSubmitMessage(
-        codeMessage ? `Berhasil disimpan. ${codeMessage}` : "Berhasil disimpan."
+        codeMessage
+          ? `Berhasil disimpan. ${codeMessage}`
+          : "Berhasil disimpan.",
       );
       pushToast(
         "default",
         "Barang keluar disimpan",
         codeMessage
           ? `Data pengeluaran dicatat. ${codeMessage}`
-          : "Data pengeluaran berhasil dicatat."
+          : "Data pengeluaran berhasil dicatat.",
       );
       fetchItems();
     } catch (err: unknown) {
@@ -1049,7 +1051,7 @@ export function OutboundPage() {
                       <span
                         className={cn(
                           "shrink-0 rounded-full border px-2 py-0.5 text-xs",
-                          stockBadgeClass
+                          stockBadgeClass,
                         )}
                       >
                         Stok: {selectedItem?.stock ?? 0}
@@ -1072,8 +1074,8 @@ export function OutboundPage() {
                         setHighlightIndex((idx) =>
                           Math.min(
                             idx + 1,
-                            Math.max(visibleItems.length - 1, 0)
-                          )
+                            Math.max(visibleItems.length - 1, 0),
+                          ),
                         );
                         return;
                       }
@@ -1271,7 +1273,7 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
             "pointer-events-auto shadow-lg",
             toast.variant === "destructive"
               ? "border-red-200 bg-red-50 text-red-900"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>

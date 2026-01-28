@@ -122,18 +122,18 @@ function formatDateTime(value: string) {
 
 export function RiwayatPage() {
   const [items, setItems] = useState<Array<{ code: string; name?: string }>>(
-    []
+    [],
   );
-  const [rawItems, setRawItems] = useState<Array<{ code: string; name?: string }>>(
-    []
-  );
+  const [rawItems, setRawItems] = useState<
+    Array<{ code: string; name?: string }>
+  >([]);
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
   const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "Masuk" | "Keluar">(
-    "all"
+    "all",
   );
   const [categoryFilter, setCategoryFilter] = useState<
     "all" | "Barang" | "Bahan baku" | "Produksi"
@@ -150,7 +150,13 @@ export function RiwayatPage() {
     actor?: string;
     date: string;
     note?: string;
-    lines: Array<{ code: string; name?: string; qty: number; note?: string; batchCode?: string }>;
+    lines: Array<{
+      code: string;
+      name?: string;
+      qty: number;
+      note?: string;
+      batchCode?: string;
+    }>;
   } | null>(null);
   const perPage = 20;
 
@@ -220,12 +226,12 @@ export function RiwayatPage() {
 
   const movements: Movement[] = useMemo(() => {
     const nameMap = new Map(
-      [...items, ...rawItems].map((it) => [it.code, it.name])
+      [...items, ...rawItems].map((it) => [it.code, it.name]),
     );
     const mapLines = (
       rows: Array<InboundApi | OutboundApi>,
       direction: Movement["direction"],
-      actorKey: "vendor" | "orderer"
+      actorKey: "vendor" | "orderer",
     ): Movement[] =>
       rows.flatMap((rec) => {
         const sourceDate = rec.createdAt ?? rec.date ?? "";
@@ -375,7 +381,7 @@ export function RiwayatPage() {
               ? `"${value.replace(/"/g, '""')}"`
               : value;
           })
-          .join(",")
+          .join(","),
       )
       .join("\n");
 
@@ -418,15 +424,17 @@ export function RiwayatPage() {
       const match =
         rawOutbound.find((rec) => rec.code === row.txCode) ??
         rawOutbound.find((rec) => rec.id === row.recordId);
-      const lines = (match?.lines ?? [
-        {
-          materialCode: row.itemCode,
-          materialName: row.name,
-          qty: Math.abs(row.qty),
-          note: row.note,
-          batchCode: row.batchCode,
-        },
-      ]).map((l) => ({
+      const lines = (
+        match?.lines ?? [
+          {
+            materialCode: row.itemCode,
+            materialName: row.name,
+            qty: Math.abs(row.qty),
+            note: row.note,
+            batchCode: row.batchCode,
+          },
+        ]
+      ).map((l) => ({
         code: l.materialCode ?? row.itemCode,
         name: l.materialName ?? row.name,
         qty: Math.abs(l.qty),
@@ -532,7 +540,9 @@ export function RiwayatPage() {
             </span>
             <div>
               <p className="text-sm text-muted-foreground">Barang keluar</p>
-              <p className="text-lg font-semibold">{stats.outboundGoodsCount} baris</p>
+              <p className="text-lg font-semibold">
+                {stats.outboundGoodsCount} baris
+              </p>
               <p className="text-xs text-muted-foreground">
                 {stats.outboundQty - stats.outboundRawQty} pcs
               </p>
@@ -546,7 +556,9 @@ export function RiwayatPage() {
             </span>
             <div>
               <p className="text-sm text-muted-foreground">Bahan baku keluar</p>
-              <p className="text-lg font-semibold">{stats.outboundRawCount} baris</p>
+              <p className="text-lg font-semibold">
+                {stats.outboundRawCount} baris
+              </p>
               <p className="text-xs text-muted-foreground">
                 {stats.outboundRawQty} pcs
               </p>
@@ -699,7 +711,7 @@ export function RiwayatPage() {
                             "rounded-full px-3",
                             isIn
                               ? "bg-emerald-50 text-emerald-700"
-                              : "bg-orange-50 text-orange-700"
+                              : "bg-orange-50 text-orange-700",
                           )}
                         >
                           {row.direction}
@@ -713,7 +725,7 @@ export function RiwayatPage() {
                               ? "bg-slate-100 text-slate-700"
                               : row.category === "Bahan baku"
                                 ? "bg-amber-50 text-amber-700"
-                                : "bg-blue-50 text-blue-700"
+                                : "bg-blue-50 text-blue-700",
                           )}
                         >
                           {row.category}
@@ -743,7 +755,9 @@ export function RiwayatPage() {
         </div>
         <Pager className="justify-between px-4 py-3 text-sm text-muted-foreground">
           <div>
-            Halaman <span className="font-semibold text-slate-900">{currentPage}</span> dari {pageCount}
+            Halaman{" "}
+            <span className="font-semibold text-slate-900">{currentPage}</span>{" "}
+            dari {pageCount}
           </div>
           <PaginationContent>
             <PaginationItem>
@@ -784,7 +798,7 @@ export function RiwayatPage() {
                     "rounded-full px-2 py-1 text-xs",
                     detailData.direction === "Masuk"
                       ? "bg-emerald-50 text-emerald-700"
-                      : "bg-orange-50 text-orange-700"
+                      : "bg-orange-50 text-orange-700",
                   )}
                 >
                   {detailData.direction}
@@ -796,7 +810,7 @@ export function RiwayatPage() {
                     "rounded-full px-2 py-1 text-xs",
                     detailData.kind === "Bahan"
                       ? "bg-amber-50 text-amber-700"
-                      : "bg-slate-100 text-slate-700"
+                      : "bg-slate-100 text-slate-700",
                   )}
                 >
                   {detailData.kind}
@@ -811,7 +825,13 @@ export function RiwayatPage() {
           {detailData ? (
             <div className="px-4 pb-6 space-y-4">
               <div className="rounded-lg border p-3 text-sm">
-                <p className="text-muted-foreground">{detailData.kind === "Bahan" ? "Pengrajin" : detailData.direction === "Masuk" ? "Vendor" : "Pemesan"}</p>
+                <p className="text-muted-foreground">
+                  {detailData.kind === "Bahan"
+                    ? "Pengrajin"
+                    : detailData.direction === "Masuk"
+                      ? "Vendor"
+                      : "Pemesan"}
+                </p>
                 <p className="font-medium">{detailData.actor ?? "-"}</p>
               </div>
               <div className="rounded-lg border p-3 text-sm">
