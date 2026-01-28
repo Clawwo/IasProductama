@@ -27,6 +27,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { httpJson, toUserMessage } from "@/lib/http";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = (
@@ -36,6 +37,7 @@ const PRODUCTION_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/produ
 const PRODUCTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/products`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const BOM_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/bom`;
+const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 type ToastVariant = "default" | "destructive";
 type Toast = {
@@ -87,6 +89,10 @@ function bomKey(code?: string, name?: string) {
   return normalize(code || name);
 }
 
+function isValidDateString(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 export function ProductionPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -95,6 +101,9 @@ export function ProductionPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [submitMessage, setSubmitMessage] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("Belum disimpan");
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const [finishedLine, setFinishedLine] = useState<LineItem>({
     id: "seed-finished",
@@ -162,6 +171,81 @@ export function ProductionPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("draft:pending-load");
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as {
+        id?: string;
+        type?: string;
+        payload?: Record<string, unknown>;
+      };
+      if (parsed.type !== "PRODUCTION" || !parsed.payload) return;
+      const payload = parsed.payload as {
+        date?: unknown;
+        note?: unknown;
+        finishedLines?: Array<{ code?: unknown; name?: unknown; qty?: unknown; note?: unknown }>;
+        rawLines?: Array<{
+          code?: unknown;
+          name?: unknown;
+          qty?: unknown;
+          note?: unknown;
+          sourceType?: unknown;
+          auto?: unknown;
+        }>;
+      };
+
+      setDate(
+        typeof payload.date === "string" && payload.date
+          ? payload.date.slice(0, 10)
+          : date
+      );
+      setNote(typeof payload.note === "string" ? payload.note : "");
+
+      const incomingFinished = Array.isArray(payload.finishedLines)
+        ? payload.finishedLines.map((line) => ({
+            id: crypto.randomUUID(),
+            code: typeof line.code === "string" ? line.code : "",
+            name: typeof line.name === "string" ? line.name : "",
+            qty:
+              typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
+            note: typeof line.note === "string" ? line.note : undefined,
+          }))
+        : [];
+
+      const incomingRaw: LineItem[] = Array.isArray(payload.rawLines)
+        ? payload.rawLines.map((line) => ({
+            id: crypto.randomUUID(),
+            code: typeof line.code === "string" ? line.code : "",
+            name: typeof line.name === "string" ? line.name : "",
+            qty:
+              typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
+            note: typeof line.note === "string" ? line.note : undefined,
+            sourceType:
+              line.sourceType === "ITEM" || line.sourceType === "BAHAN_BAKU"
+                ? line.sourceType
+                : "BAHAN_BAKU",
+            auto: Boolean(line.auto),
+          }))
+        : [];
+
+      if (incomingFinished.length) {
+        setFinishedLines(incomingFinished.filter((l) => l.code || l.name));
+      }
+      if (incomingRaw.length) {
+        setRawLines(incomingRaw.filter((l) => l.code || l.name));
+      }
+
+      setDraftStatus("Draft dimuat");
+      setDraftId(typeof parsed.id === "string" ? parsed.id : null);
+      pushToast("default", "Draft produksi dimuat.");
+    } catch {
+      pushToast("destructive", "Draft produksi tidak bisa dibaca.");
+    } finally {
+      sessionStorage.removeItem("draft:pending-load");
+    }
+  }, [date, pushToast]);
 
   const rawNameIndex = useMemo(() => {
     const map = new Map<string, RemoteItem>();
@@ -489,8 +573,50 @@ export function ProductionPage() {
     setRawLines((prev) => prev.filter((l) => l.id !== id));
   }
 
+  async function handleSaveDraft() {
+    const payload = {
+      date,
+      note: note.trim() || undefined,
+      finishedLines: finishedLines.map((l) => ({
+        code: l.code,
+        name: l.name,
+        qty: l.qty,
+        note: l.note,
+      })),
+    };
+
+    // Keep manual and auto raw lines; auto lines will be regenerated but persisted for completeness
+    const rawPayload = rawLines.map((l) => ({
+      code: l.code,
+      name: l.name,
+      qty: l.qty,
+      note: l.note,
+      sourceType: l.sourceType ?? "BAHAN_BAKU",
+      auto: Boolean(l.auto),
+    }));
+
+    try {
+      setDraftSaving(true);
+      const isUpdate = Boolean(draftId);
+      const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
+      const method = isUpdate ? "PUT" : "POST";
+      const data = await httpJson<{ id?: string }>(targetUrl, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "PRODUCTION", payload: { ...payload, rawLines: rawPayload } }),
+      });
+      if (data?.id) setDraftId(data.id);
+      setDraftStatus("Draft tersimpan");
+      pushToast("default", "Draft produksi disimpan.");
+    } catch (err: unknown) {
+      pushToast("destructive", toUserMessage(err, "Gagal menyimpan draft."));
+    } finally {
+      setDraftSaving(false);
+    }
+  }
+
   async function handleSubmit() {
-    if (!date) {
+    if (!date || !isValidDateString(date)) {
       pushToast("destructive", "Tanggal wajib", "Isi tanggal produksi.");
       return;
     }
@@ -544,16 +670,11 @@ export function ProductionPage() {
     try {
       setSubmitStatus("loading");
       setSubmitMessage("");
-      const res = await fetch(PRODUCTION_URL, {
+      const data = await httpJson<{ code?: string }>(PRODUCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan produksi.");
-      }
-      const data = (await res.json()) as { code?: string };
       const message = data?.code
         ? `Berhasil disimpan. Kode: ${data.code}`
         : "Berhasil disimpan.";
@@ -577,9 +698,11 @@ export function ProductionPage() {
         note: "",
         sourceType: "BAHAN_BAKU",
       });
+      setDraftStatus("Belum disimpan");
+      setDraftId(null);
       fetchData();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Gagal menyimpan.";
+      const msg = toUserMessage(err, "Gagal menyimpan.");
       setSubmitStatus("error");
       setSubmitMessage(msg);
       pushToast("destructive", "Gagal", msg);
@@ -635,7 +758,9 @@ export function ProductionPage() {
             />
             <SummaryCard
               label="Status"
-              value={submitStatus === "loading" ? "Menyimpan..." : "Draft"}
+              value={
+                submitStatus === "loading" ? "Menyimpan..." : draftStatus
+              }
             />
           </div>
         </header>
@@ -833,6 +958,9 @@ export function ProductionPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1 text-sm text-slate-600">
+            <span className="block text-xs text-slate-500">
+              Status draft: {draftStatus}
+            </span>
             {submitStatus === "success" ? (
               <span className="text-emerald-700">{submitMessage}</span>
             ) : null}
@@ -840,14 +968,24 @@ export function ProductionPage() {
               <span className="text-red-700">{submitMessage}</span>
             ) : null}
           </div>
-          <Button
-            onClick={handleSubmit}
-            disabled={submitStatus === "loading"}
-            className="w-full sm:w-auto"
-          >
-            <Factory className="mr-2 size-4" />
-            {submitStatus === "loading" ? "Menyimpan..." : "Catat produksi"}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={draftSaving || submitStatus === "loading"}
+              className="w-full sm:w-auto"
+            >
+              {draftSaving ? "Menyimpan draft..." : "Simpan draft"}
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={submitStatus === "loading"}
+              className="w-full sm:w-auto"
+            >
+              <Factory className="mr-2 size-4" />
+              {submitStatus === "loading" ? "Menyimpan..." : "Catat produksi"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

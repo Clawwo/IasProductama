@@ -25,10 +25,12 @@ import {
   ArrowUpRight,
   CalendarClock,
   ClipboardList,
+  Factory,
   Loader2,
   Play,
   RefreshCw,
   Trash2,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +40,7 @@ const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
 type DraftRecord = {
   id: string;
-  type: "INBOUND" | "OUTBOUND";
+  type: "INBOUND" | "OUTBOUND" | "PRODUCTION";
   payload: unknown;
   createdAt: string;
   updatedAt: string;
@@ -50,23 +52,47 @@ type DraftMeta = {
   totalItem: number;
   totalQty: number;
   note: string;
+  kind: Filter;
+  draftKind?: string;
 };
 
-type Filter = "ALL" | "INBOUND" | "OUTBOUND";
+type Filter = "ALL" | "INBOUND" | "OUTBOUND" | "OUTBOUND_RAW" | "PRODUCTION";
 
 function parseDraftMeta(draft: DraftRecord): DraftMeta {
   const payload = (draft.payload ?? {}) as Record<string, unknown>;
-  const rawLines = Array.isArray((payload as { [key: string]: unknown }).lines)
-    ? ((payload as { [key: string]: unknown }).lines as Array<{ qty?: unknown; note?: unknown; code?: unknown }>)
+  const draftKind =
+    typeof (payload as { draftKind?: unknown }).draftKind === "string"
+      ? ((payload as { draftKind?: unknown }).draftKind as string)
+      : undefined;
+
+  const kind: Filter =
+    draft.type === "OUTBOUND" && draftKind === "OUTBOUND_RAW"
+      ? "OUTBOUND_RAW"
+      : draft.type === "OUTBOUND"
+      ? "OUTBOUND"
+      : draft.type;
+
+  const finishedLines = Array.isArray((payload as { finishedLines?: unknown }).finishedLines)
+    ? ((payload as { finishedLines?: unknown }).finishedLines as Array<{ qty?: unknown }> )
     : [];
 
-  const totalQty = rawLines.reduce((sum, line) => {
+  const rawLines = Array.isArray((payload as { lines?: unknown }).lines)
+    ? ((payload as { lines?: unknown }).lines as Array<{ qty?: unknown }> )
+    : Array.isArray((payload as { rawLines?: unknown }).rawLines)
+    ? ((payload as { rawLines?: unknown }).rawLines as Array<{ qty?: unknown }> )
+    : [];
+
+  const chosenLines = kind === "PRODUCTION" && finishedLines.length
+    ? finishedLines
+    : rawLines;
+
+  const totalQty = chosenLines.reduce((sum, line) => {
     const qtyValue = line?.qty;
     const qty = typeof qtyValue === "number" ? qtyValue : Number(qtyValue);
     return sum + (Number.isFinite(qty) ? qty : 0);
   }, 0);
 
-  const totalItem = rawLines.length;
+  const totalItem = chosenLines.length;
   const dateValue =
     typeof (payload as { date?: unknown }).date === "string"
       ? ((payload as { date?: unknown }).date as string)
@@ -76,14 +102,26 @@ function parseDraftMeta(draft: DraftRecord): DraftMeta {
     typeof (payload as { note?: unknown }).note === "string"
       ? ((payload as { note?: unknown }).note as string)
       : "";
-  const counterpartKey = draft.type === "INBOUND" ? "vendor" : "orderer";
-  const counterpartRaw = (payload as { [key: string]: unknown })[counterpartKey];
-  const counterpart =
-    typeof counterpartRaw === "string" && counterpartRaw.trim()
-      ? counterpartRaw
-      : "-";
 
-  return { counterpart, date, totalItem, totalQty, note };
+  let counterpart = "-";
+  if (kind === "INBOUND") {
+    const vendor = (payload as { vendor?: unknown }).vendor;
+    counterpart = typeof vendor === "string" && vendor.trim() ? vendor : "-";
+  } else if (kind === "OUTBOUND_RAW") {
+    const artisan = (payload as { artisan?: unknown }).artisan;
+    counterpart = typeof artisan === "string" && artisan.trim() ? artisan : "-";
+  } else if (kind === "OUTBOUND") {
+    const orderer = (payload as { orderer?: unknown }).orderer;
+    counterpart = typeof orderer === "string" && orderer.trim() ? orderer : "-";
+  } else if (kind === "PRODUCTION") {
+    const noteStr = (payload as { note?: unknown }).note;
+    counterpart =
+      typeof noteStr === "string" && noteStr.trim()
+        ? noteStr
+        : "Produksi";
+  }
+
+  return { counterpart, date, totalItem, totalQty, note, kind, draftKind };
 }
 
 export function DraftsPage() {
@@ -117,10 +155,15 @@ export function DraftsPage() {
     fetchDrafts();
   }, [fetchDrafts]);
 
+  const draftsWithMeta = useMemo(
+    () => drafts.map((draft) => ({ draft, meta: parseDraftMeta(draft) })),
+    [drafts]
+  );
+
   const filteredDrafts = useMemo(() => {
-    if (filter === "ALL") return drafts;
-    return drafts.filter((draft) => draft.type === filter);
-  }, [drafts, filter]);
+    if (filter === "ALL") return draftsWithMeta;
+    return draftsWithMeta.filter(({ meta }) => meta.kind === filter);
+  }, [draftsWithMeta, filter]);
 
   const deleteDraft = useCallback(async (id: string) => {
     try {
@@ -140,13 +183,17 @@ export function DraftsPage() {
     }
   }, []);
 
-  const handleUseDraft = useCallback((draft: DraftRecord) => {
+  const handleUseDraft = useCallback((draft: DraftRecord, meta: DraftMeta) => {
     sessionStorage.setItem(
       "draft:pending-load",
       JSON.stringify({ id: draft.id, type: draft.type, payload: draft.payload })
     );
-    if (draft.type === "INBOUND") {
+    if (meta.kind === "INBOUND") {
       window.location.hash = "#masuk";
+    } else if (meta.kind === "OUTBOUND_RAW") {
+      window.location.hash = "#bahan-keluar";
+    } else if (meta.kind === "PRODUCTION") {
+      window.location.hash = "#produksi";
     } else {
       window.location.hash = "#keluar";
     }
@@ -163,7 +210,15 @@ export function DraftsPage() {
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {(["ALL", "INBOUND", "OUTBOUND"] as Filter[]).map((key) => (
+          {(
+            [
+              { key: "ALL", label: "Semua", icon: ClipboardList },
+              { key: "INBOUND" as Filter, label: "Barang Masuk", icon: ArrowDownLeft },
+              { key: "OUTBOUND" as Filter, label: "Barang Keluar", icon: ArrowUpRight },
+              { key: "OUTBOUND_RAW" as Filter, label: "Bahan Keluar", icon: Wrench },
+              { key: "PRODUCTION" as Filter, label: "Produksi", icon: Factory },
+            ] as Array<{ key: Filter; label: string; icon: typeof ClipboardList }>
+          ).map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
               size="sm"
@@ -171,10 +226,8 @@ export function DraftsPage() {
               className={cn("gap-2", filter === key && "shadow-sm")}
               onClick={() => setFilter(key)}
             >
-              {key === "ALL" && <ClipboardList className="size-4" />}
-              {key === "INBOUND" && <ArrowDownLeft className="size-4" />}
-              {key === "OUTBOUND" && <ArrowUpRight className="size-4" />}
-              {key === "ALL" ? "Semua" : key === "INBOUND" ? "Barang Masuk" : "Barang Keluar"}
+              <Icon className="size-4" />
+              {label}
             </Button>
           ))}
           <Button variant="outline" size="sm" onClick={fetchDrafts} disabled={loading}>
@@ -187,13 +240,23 @@ export function DraftsPage() {
         <SummaryCard
           label="Total draft"
           value={String(filteredDrafts.length)}
-          sub={filter === "ALL" ? "Semua tipe" : filter === "INBOUND" ? "Draft masuk" : "Draft keluar"}
+          sub={
+            filter === "ALL"
+              ? "Semua tipe"
+              : filter === "INBOUND"
+              ? "Draft masuk"
+              : filter === "OUTBOUND"
+              ? "Draft barang keluar"
+              : filter === "OUTBOUND_RAW"
+              ? "Draft bahan baku"
+              : "Draft produksi"
+          }
         />
         <SummaryCard
           label="Terbaru"
           value={
             filteredDrafts[0]
-              ? new Date(filteredDrafts[0].updatedAt).toLocaleString("id-ID")
+              ? new Date(filteredDrafts[0].draft.updatedAt).toLocaleString("id-ID")
               : "-"
           }
           sub={filteredDrafts[0] ? "Terakhir diubah" : "Belum ada draft"}
@@ -252,26 +315,43 @@ export function DraftsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredDrafts.map((draft) => {
-                const meta = parseDraftMeta(draft);
+              filteredDrafts.map(({ draft, meta }) => {
+                const badgeClass =
+                  meta.kind === "INBOUND"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : meta.kind === "PRODUCTION"
+                    ? "bg-blue-50 text-blue-700"
+                    : meta.kind === "OUTBOUND_RAW"
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-orange-50 text-orange-700";
+
+                const TypeIcon =
+                  meta.kind === "INBOUND"
+                    ? ArrowDownLeft
+                    : meta.kind === "OUTBOUND_RAW"
+                    ? Wrench
+                    : meta.kind === "PRODUCTION"
+                    ? Factory
+                    : ArrowUpRight;
+
+                const typeLabel =
+                  meta.kind === "INBOUND"
+                    ? "Masuk"
+                    : meta.kind === "OUTBOUND_RAW"
+                    ? "Bahan Keluar"
+                    : meta.kind === "PRODUCTION"
+                    ? "Produksi"
+                    : "Keluar";
+
                 return (
                   <TableRow key={draft.id}>
                     <TableCell className="px-4 py-3">
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          "gap-1 rounded-full px-3",
-                          draft.type === "INBOUND"
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-amber-50 text-amber-700"
-                        )}
+                        className={cn("gap-1 rounded-full px-3", badgeClass)}
                       >
-                        {draft.type === "INBOUND" ? (
-                          <ArrowDownLeft className="size-4" />
-                        ) : (
-                          <ArrowUpRight className="size-4" />
-                        )}
-                        {draft.type === "INBOUND" ? "Masuk" : "Keluar"}
+                        <TypeIcon className="size-4" />
+                        {typeLabel}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium px-4 py-3">{meta.counterpart}</TableCell>
@@ -289,7 +369,7 @@ export function DraftsPage() {
                         <Button
                           size="sm"
                           className="gap-2"
-                          onClick={() => handleUseDraft(draft)}
+                          onClick={() => handleUseDraft(draft, meta)}
                         >
                           <Play className="size-4" /> Lanjutkan
                         </Button>

@@ -214,6 +214,7 @@ export function OutboundPage() {
       };
       if (parsed.type !== "OUTBOUND" || !parsed.payload) return;
       const payload = parsed.payload as {
+        draftKind?: unknown;
         orderer?: unknown;
         date?: unknown;
         note?: unknown;
@@ -224,6 +225,9 @@ export function OutboundPage() {
           note?: unknown;
         }>;
       };
+      const draftKind =
+        typeof payload.draftKind === "string" ? payload.draftKind : undefined;
+      if (draftKind && draftKind !== "OUTBOUND_GOODS") return;
       setOrderer(typeof payload.orderer === "string" ? payload.orderer : "");
       setDate(
         typeof payload.date === "string" && payload.date
@@ -746,6 +750,7 @@ export function OutboundPage() {
 
   async function handleSaveDraft() {
     const payload = {
+      draftKind: "OUTBOUND_GOODS",
       orderer: orderer.trim(),
       date,
       note: note.trim() || undefined,
