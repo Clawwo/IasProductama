@@ -54,6 +54,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   inferKind,
   inventoryItemsWithKind,
@@ -400,26 +401,12 @@ export function InventoryPage() {
       item.stock,
       getStatus(item.stock),
     ]);
-    const csv = [header, ...rows]
-      .map((cols) =>
-        cols
-          .map((col) => {
-            const value = String(col ?? "");
-            return value.includes(",") || value.includes("\n")
-              ? `"${value.replace(/"/g, '""')}"`
-              : value;
-          })
-          .join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "inventory-export.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    const data = [header, ...rows];
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+    applySheetStyles(worksheet, data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
+    XLSX.writeFile(workbook, "inventory-export.xlsx", { bookType: "xlsx" });
   };
 
   function onCloseForm() {
@@ -1129,4 +1116,46 @@ function getRingHoles(item: InventoryItemWithKind): string | null {
   const holeMatch = item.name.match(/lubang\s*(\d{1,2})/i);
   if (!holeMatch) return null;
   return holeMatch[1];
+}
+
+function applySheetStyles(
+  worksheet: XLSX.WorkSheet,
+  rows: Array<Array<string | number>>
+) {
+  const ref = worksheet["!ref"];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  const border = {
+    top: { style: "thin", color: { rgb: "D1D5DB" } },
+    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+    left: { style: "thin", color: { rgb: "D1D5DB" } },
+    right: { style: "thin", color: { rgb: "D1D5DB" } },
+  };
+
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = worksheet[addr];
+      if (!cell) continue;
+      const isHeader = r === 0;
+      cell.s = {
+        font: { bold: isHeader },
+        border,
+        alignment: { vertical: "center", wrapText: true },
+      };
+    }
+  }
+
+  const cols = rows[0]?.map((_, colIdx) => {
+    let max = 0;
+    rows.forEach((row) => {
+      const value = row[colIdx];
+      const len = String(value ?? "").length;
+      if (len > max) max = len;
+    });
+    return { wch: Math.min(Math.max(max + 2, 10), 60) };
+  });
+  if (cols && cols.length > 0) {
+    worksheet["!cols"] = cols;
+  }
 }
