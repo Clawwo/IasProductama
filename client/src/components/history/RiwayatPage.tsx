@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   Sheet,
   SheetContent,
@@ -249,8 +250,7 @@ export function RiwayatPage() {
     return d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta" });
   };
 
-  const downloadCsv = (rows: Movement[], filename: string) => {
-    if (rows.length === 0) return;
+  const buildHistoryRows = (rows: Movement[]) => {
     const header = [
       "Kode Transaksi",
       "Tanggal",
@@ -261,7 +261,7 @@ export function RiwayatPage() {
       "Vendor/PO",
       "Keterangan",
     ];
-    const csvRows = rows.map((row) => [
+    const data = rows.map((row) => [
       row.txCode,
       toDateOnly(row.rawTime, row.time),
       row.itemCode,
@@ -271,26 +271,7 @@ export function RiwayatPage() {
       row.actor ?? "",
       row.note ?? "",
     ]);
-    const csv = [header, ...csvRows]
-      .map((cols) =>
-        cols
-          .map((col) => {
-            const value = String(col ?? "");
-            return value.includes(",") || value.includes("\n")
-              ? `"${value.replace(/"/g, '""')}"`
-              : value;
-          })
-          .join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
+    return [header, ...data];
   };
 
   const openDetail = (row: Movement) => {
@@ -340,20 +321,40 @@ export function RiwayatPage() {
     setDetailOpen(true);
   };
 
-  const exportCsv = () => {
+  const exportExcel = () => {
     if (filtered.length === 0) return;
+
+    const workbook = XLSX.utils.book_new();
 
     if (typeFilter === "all") {
       const inboundRows = filtered.filter((row) => row.direction === "Masuk");
       const outboundRows = filtered.filter((row) => row.direction === "Keluar");
-      downloadCsv(inboundRows, "riwayat-masuk.csv");
-      downloadCsv(outboundRows, "riwayat-keluar.csv");
+
+      if (inboundRows.length > 0) {
+        const data = buildHistoryRows(inboundRows);
+        const sheet = XLSX.utils.aoa_to_sheet(data);
+        applySheetStyles(sheet, data);
+        XLSX.utils.book_append_sheet(workbook, sheet, "Masuk");
+      }
+
+      if (outboundRows.length > 0) {
+        const data = buildHistoryRows(outboundRows);
+        const sheet = XLSX.utils.aoa_to_sheet(data);
+        applySheetStyles(sheet, data);
+        XLSX.utils.book_append_sheet(workbook, sheet, "Keluar");
+      }
+
+      XLSX.writeFile(workbook, "riwayat.xlsx", { bookType: "xlsx" });
       return;
     }
 
+    const data = buildHistoryRows(filtered);
+    const sheet = XLSX.utils.aoa_to_sheet(data);
+    applySheetStyles(sheet, data);
+    XLSX.utils.book_append_sheet(workbook, sheet, typeFilter);
     const filename =
-      typeFilter === "Masuk" ? "riwayat-masuk.csv" : "riwayat-keluar.csv";
-    downloadCsv(filtered, filename);
+      typeFilter === "Masuk" ? "riwayat-masuk.xlsx" : "riwayat-keluar.xlsx";
+    XLSX.writeFile(workbook, filename, { bookType: "xlsx" });
   };
 
   return (
@@ -370,9 +371,9 @@ export function RiwayatPage() {
             <RefreshCw className="mr-2 size-4" />
             {loading ? "Memuat..." : "Refresh"}
           </Button>
-          <Button onClick={exportCsv} disabled={filtered.length === 0}>
+          <Button onClick={exportExcel} disabled={filtered.length === 0}>
             <Download className="mr-2 size-4" />
-            Export CSV
+            Export Excel
           </Button>
         </div>
       </div>
@@ -691,4 +692,46 @@ export function RiwayatPage() {
       </Sheet>
     </div>
   );
+}
+
+function applySheetStyles(
+  worksheet: XLSX.WorkSheet,
+  rows: Array<Array<string | number>>
+) {
+  const ref = worksheet["!ref"];
+  if (!ref) return;
+  const range = XLSX.utils.decode_range(ref);
+  const border = {
+    top: { style: "thin", color: { rgb: "D1D5DB" } },
+    bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+    left: { style: "thin", color: { rgb: "D1D5DB" } },
+    right: { style: "thin", color: { rgb: "D1D5DB" } },
+  };
+
+  for (let r = range.s.r; r <= range.e.r; r += 1) {
+    for (let c = range.s.c; c <= range.e.c; c += 1) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = worksheet[addr];
+      if (!cell) continue;
+      const isHeader = r === 0;
+      cell.s = {
+        font: { bold: isHeader },
+        border,
+        alignment: { vertical: "center", wrapText: true },
+      };
+    }
+  }
+
+  const cols = rows[0]?.map((_, colIdx) => {
+    let max = 0;
+    rows.forEach((row) => {
+      const value = row[colIdx];
+      const len = String(value ?? "").length;
+      if (len > max) max = len;
+    });
+    return { wch: Math.min(Math.max(max + 2, 10), 60) };
+  });
+  if (cols && cols.length > 0) {
+    worksheet["!cols"] = cols;
+  }
 }
