@@ -12,7 +12,18 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  app.enableCors();
+  const origins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // Allow configured origins; fall back to all origins for local dev.
+  app.enableCors({
+    origin: origins.length ? origins : true,
+    credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization',
+  });
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap().catch((err) => {
