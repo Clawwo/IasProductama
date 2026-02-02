@@ -17,12 +17,18 @@ async function bootstrap() {
     .map((o) => o.trim())
     .filter(Boolean);
 
-  // Allow configured origins; fall back to all origins for local dev.
+  // Prefer explicit origins from env; in production fall back to the iasproductama domain pattern.
+  const origin = origins.length
+    ? origins
+    : process.env.NODE_ENV === 'production'
+      ? [/\.iasproductama\.site$/]
+      : true;
+
   app.enableCors({
-    origin: origins.length ? origins : true,
+    origin,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization',
+    allowedHeaders: 'Content-Type, Authorization, Accept, Origin',
   });
   await app.listen(process.env.PORT ?? 3000);
 }
