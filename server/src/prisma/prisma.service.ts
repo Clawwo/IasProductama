@@ -21,8 +21,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
     const sslCertPath =
       process.env.PGSSLROOTCERT || process.env.SSL_CERT_FILE || undefined;
-    const sslMode = process.env.PGSSLMODE || 'require';
-    const host = new URL(url).hostname;
+    const sslMode = process.env.PGSSLMODE || 'verify-full';
+    const urlObj = new URL(url);
+    const host = urlObj.hostname;
+    urlObj.search = '';
 
     const sslConfig = sslCertPath
       ? {
@@ -32,7 +34,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         }
       : undefined;
 
-    const pool = new Pool({ connectionString: url, ssl: sslConfig });
+    const pool = new Pool({
+      connectionString: urlObj.toString(),
+      ssl: sslConfig,
+    });
     super({ adapter: new PrismaPg(pool) });
   }
   async onModuleInit() {
