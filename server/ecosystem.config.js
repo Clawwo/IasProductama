@@ -6,6 +6,7 @@ module.exports = {
       env: {
         PGSSLROOTCERT: '/home/iasproductama/supabase-ca-bundle.pem',
         NODE_EXTRA_CA_CERTS: '/home/iasproductama/supabase-ca-bundle.pem',
+        SSL_CERT_FILE: '/home/iasproductama/supabase-ca-bundle.pem',
         DATABASE_URL:
           'postgresql://postgres.fysjbxgdbjqhalesmlri:DKIkFRZIKBuZbtPU@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require&sslrootcert=/home/iasproductama/supabase-ca-bundle.pem',
         DIRECT_URL:
