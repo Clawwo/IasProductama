@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { getAccessToken } from "@/lib/auth";
 import { httpJson, toUserMessage } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -768,9 +769,14 @@ export function InboundPage() {
       setSubmitStatus("loading");
       setSubmitMessage("");
       setFormError("");
+      const token = getAccessToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
       const data = await httpJson<{ code?: string }>(INBOUND_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
