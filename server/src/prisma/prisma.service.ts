@@ -22,11 +22,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     const sslCertPath =
       process.env.PGSSLROOTCERT || process.env.SSL_CERT_FILE || undefined;
     const sslMode = process.env.PGSSLMODE || 'require';
+    const host = new URL(url).hostname;
 
     const sslConfig = sslCertPath
       ? {
           ca: readFileSync(sslCertPath, 'utf8'),
           rejectUnauthorized: sslMode !== 'allow' && sslMode !== 'prefer',
+          servername: host,
         }
       : undefined;
 
