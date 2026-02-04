@@ -824,9 +824,10 @@ export function OutboundPage() {
       setSubmitStatus("loading");
       setSubmitMessage("");
       setFormError("");
+      const requestHeaders = { "Content-Type": "application/json" };
       const data = await httpJson<{ code?: string }>(OUTBOUND_URL, {
         method: "POST",
-        headers,
+        headers: requestHeaders,
         body: JSON.stringify(payload),
       });
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
