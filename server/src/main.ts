@@ -12,10 +12,25 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  app.enableCors();
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
-  console.log(`✅ Server is running on http://localhost:${port}`);
+  const origins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  // Prefer explicit origins from env; in production fall back to the iasproductama domain pattern.
+  const origin = origins.length
+    ? origins
+    : process.env.NODE_ENV === 'production'
+      ? [/\.iasproductama\.site$/]
+      : true;
+
+  app.enableCors({
+    origin,
+    credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization, Accept, Origin',
+  });
+  await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap().catch((err) => {
   // Exit non-zero so process managers can restart
