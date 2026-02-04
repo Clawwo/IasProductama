@@ -275,7 +275,7 @@ export function RawMaterialsOutboundTrackingPage() {
     }));
   };
 
-  const validateLine = (line: LineFormState) => {
+  const validateLine = (line: LineFormState | LineForm) => {
     const code = line.code.trim();
     const batch = line.batchCode.trim();
     const qty = Number(line.qty);
