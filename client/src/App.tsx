@@ -162,24 +162,24 @@ function SidebarNav({
                   return true;
                 })
                 .map((item) => (
-                <SidebarMenuItem key={item.key}>
-                  <SidebarMenuButton
-                    isActive={active === item.key}
-                    asChild
-                    onClick={(e) => {
-                      if (onNavigate) {
-                        e.preventDefault();
-                        onNavigate(item.key);
-                      }
-                    }}
-                  >
-                    <a href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={active === item.key}
+                      asChild
+                      onClick={(e) => {
+                        if (onNavigate) {
+                          e.preventDefault();
+                          onNavigate(item.key);
+                        }
+                      }}
+                    >
+                      <a href={item.href} className="flex items-center gap-2">
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

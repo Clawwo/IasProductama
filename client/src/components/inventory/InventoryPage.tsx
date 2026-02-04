@@ -128,16 +128,22 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
       const remoteMerged = [
         ...itemsData,
-        ...rawData.filter((raw) => !itemsData.some((it) => it.code === raw.code)),
+        ...rawData.filter(
+          (raw) => !itemsData.some((it) => it.code === raw.code),
+        ),
         ...productsData
           .filter(
             (prod) =>
               !itemsData.some((it) => it.code === prod.code) &&
-              !rawData.some((raw) => raw.code === prod.code)
+              !rawData.some((raw) => raw.code === prod.code),
           )
           .map((prod) => {
             // Normalisasi kategori DRUMBAND/HTS/SEMI menjadi Produk
-            if (prod.category === "DRUMBAND" || prod.category === "HTS" || prod.category === "SEMI") {
+            if (
+              prod.category === "DRUMBAND" ||
+              prod.category === "HTS" ||
+              prod.category === "SEMI"
+            ) {
               return {
                 ...prod,
                 subCategory: prod.category,
@@ -148,7 +154,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           }),
       ];
       const staticMap = new Map(
-        inventoryItemsWithKind.map((base) => [base.code, base])
+        inventoryItemsWithKind.map((base) => [base.code, base]),
       );
       const fromApi = remoteMerged.map((it) => {
         const base = staticMap.get(it.code);
@@ -332,7 +338,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       const body = words.slice(0, 3).map((w) => normalizeToken(w).slice(0, 6));
       return [prefix, ...body].filter(Boolean).join("-");
     },
-    [pickPrefix]
+    [pickPrefix],
   );
 
   const suggestCode = useCallback(
@@ -356,7 +362,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       });
       return `${baseUpper}-${String(max + 1).padStart(2, "0")}`;
     },
-    [buildCodeBase, escapeRegExp, items, normalizeCategory]
+    [buildCodeBase, escapeRegExp, items, normalizeCategory],
   );
 
   const paged = useMemo(() => {
@@ -409,7 +415,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
     if (!editing && items.some((it) => it.code === payload.code)) {
       setFormError(
-        "Kode sudah ada. Gunakan kode lain atau edit item tersebut."
+        "Kode sudah ada. Gunakan kode lain atau edit item tersebut.",
       );
       return;
     }
@@ -679,8 +685,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   {ringSubCategory === "all"
                     ? "Model"
                     : ringSubCategory === "SNARE"
-                    ? "Snare"
-                    : "Tom"}
+                      ? "Snare"
+                      : "Tom"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -793,9 +799,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   className="h-9 px-3"
                 >
                   <Package className="mr-2 h-4 w-4" />
-                  {productSubCategory === "all"
-                    ? "Jenis"
-                    : productSubCategory}
+                  {productSubCategory === "all" ? "Jenis" : productSubCategory}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -804,13 +808,17 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 <DropdownMenuItem onSelect={() => setProductSubCategory("all")}>
                   Semua
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("DRUMBAND")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("DRUMBAND")}
+                >
                   DRUMBAND
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setProductSubCategory("HTS")}>
                   HTS
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("SEMI")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("SEMI")}
+                >
                   SEMI
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -1224,7 +1232,7 @@ function getRingHoles(item: InventoryItemWithKind): string | null {
 
 function applySheetStyles(
   worksheet: XLSX.WorkSheet,
-  rows: Array<Array<string | number>>
+  rows: Array<Array<string | number>>,
 ) {
   const ref = worksheet["!ref"];
   if (!ref) return;

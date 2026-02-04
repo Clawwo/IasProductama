@@ -1,7 +1,7 @@
 import { clearTokens, getAccessToken, refreshAccessToken } from "./auth";
 
-const apiUrlEnv = (import.meta as { env?: Record<string, string> }).env?.
-  VITE_API_URL;
+const apiUrlEnv = (import.meta as { env?: Record<string, string> }).env
+  ?.VITE_API_URL;
 const apiBaseRoot = (apiUrlEnv ?? "http://localhost:3000/api").replace(
   /\/api\/?$/,
   "",
@@ -74,9 +74,12 @@ export async function httpJson<T>(
   if (first.status === 401 && !_retry) {
     const newToken = await refreshAccessToken();
     if (!newToken) {
-      console.warn("httpJson: refreshAccessToken returned null, clearing tokens", {
-        url,
-      });
+      console.warn(
+        "httpJson: refreshAccessToken returned null, clearing tokens",
+        {
+          url,
+        },
+      );
     }
     if (newToken) {
       const retryInit = buildInitWithAuth(init, newToken);

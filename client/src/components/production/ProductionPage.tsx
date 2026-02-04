@@ -409,7 +409,9 @@ export function ProductionPage() {
       if (!item.code && !item.name) return null;
 
       try {
-        const data = await httpJson<BomEntry>(`${BOM_URL}?${params.toString()}`);
+        const data = await httpJson<BomEntry>(
+          `${BOM_URL}?${params.toString()}`,
+        );
         if (key) {
           setBomCache((prev) => ({ ...prev, [key]: data }));
         }
@@ -440,7 +442,9 @@ export function ProductionPage() {
         if (!line.code && !line.name) continue;
 
         try {
-          const data = await httpJson<BomEntry>(`${BOM_URL}?${params.toString()}`);
+          const data = await httpJson<BomEntry>(
+            `${BOM_URL}?${params.toString()}`,
+          );
           setBomCache((prev) => ({ ...prev, [key]: data }));
         } catch (err) {
           console.error("Failed to prefetch BOM", err);
@@ -1137,9 +1141,7 @@ function LineComposer({
         type="number"
         min={1}
         value={lineItem.qty}
-        onChange={(e) =>
-          setLineItem((l) => ({ ...l, qty: e.target.value }))
-        }
+        onChange={(e) => setLineItem((l) => ({ ...l, qty: e.target.value }))}
       />
       <Button onClick={onAdd}>
         <Plus className="size-4" />

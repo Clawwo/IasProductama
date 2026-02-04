@@ -1,4 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -27,24 +31,33 @@ export class UsersService {
     return this.prisma.user.create({ data: { ...data, role } });
   }
 
-  async createWithPlainPassword(data: CreateUserDto): Promise<Omit<User, 'password'>> {
+  async createWithPlainPassword(
+    data: CreateUserDto,
+  ): Promise<Omit<User, 'password'>> {
     const hashed = await bcrypt.hash(data.password, 10);
     const created = await this.create({ ...data, password: hashed });
     return this.sanitize(created);
   }
 
-  async update(id: string, data: UpdateUserDto): Promise<Omit<User, 'password'>> {
+  async update(
+    id: string,
+    data: UpdateUserDto,
+  ): Promise<Omit<User, 'password'>> {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('User not found');
 
     if (data.email && data.email !== existing.email) {
-      const dupe = await this.prisma.user.findUnique({ where: { email: data.email } });
+      const dupe = await this.prisma.user.findUnique({
+        where: { email: data.email },
+      });
       if (dupe && dupe.id !== id) {
         throw new ConflictException('Email already in use');
       }
     }
 
-    const password = data.password ? await bcrypt.hash(data.password, 10) : undefined;
+    const password = data.password
+      ? await bcrypt.hash(data.password, 10)
+      : undefined;
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -61,12 +74,14 @@ export class UsersService {
   }
 
   async remove(id: string): Promise<Omit<User, 'password'>> {
-    const deleted = await this.prisma.user.delete({ where: { id } }).catch((err) => {
-      if (err?.code === 'P2025') {
-        throw new NotFoundException('User not found');
-      }
-      throw err;
-    });
+    const deleted = await this.prisma.user
+      .delete({ where: { id } })
+      .catch((err) => {
+        if (err?.code === 'P2025') {
+          throw new NotFoundException('User not found');
+        }
+        throw err;
+      });
     return this.sanitize(deleted);
   }
 
