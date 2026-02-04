@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,7 +81,7 @@ type RemoteItem = {
   stock: number;
 };
 
-export function InventoryPage() {
+export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   const [items, setItems] = useState<InventoryItemWithKind[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export function InventoryPage() {
     category: "",
     stock: 0,
   });
+  const [manualCode, setManualCode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<
     "all" | "aman" | "menipis" | "kritis"
@@ -118,34 +120,30 @@ export function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const [itemsRes, rawRes, productsRes] = await Promise.all([
-        fetch(ITEMS_URL),
-        fetch(RAW_URL),
-        fetch(PRODUCTS_URL),
+      const [itemsData, rawData, productsData] = await Promise.all([
+        httpJson<RemoteItem[]>(ITEMS_URL),
+        httpJson<RemoteItem[]>(RAW_URL),
+        httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
-
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
-      if (!rawRes.ok) throw new Error(await rawRes.text());
-      if (!productsRes.ok) throw new Error(await productsRes.text());
-
-      const [itemsData, rawData, productsData] = (await Promise.all([
-        itemsRes.json(),
-        rawRes.json(),
-        productsRes.json(),
-      ])) as [RemoteItem[], RemoteItem[], RemoteItem[]];
 
       const remoteMerged = [
         ...itemsData,
-        ...rawData.filter((raw) => !itemsData.some((it) => it.code === raw.code)),
+        ...rawData.filter(
+          (raw) => !itemsData.some((it) => it.code === raw.code),
+        ),
         ...productsData
           .filter(
             (prod) =>
               !itemsData.some((it) => it.code === prod.code) &&
-              !rawData.some((raw) => raw.code === prod.code)
+              !rawData.some((raw) => raw.code === prod.code),
           )
           .map((prod) => {
             // Normalisasi kategori DRUMBAND/HTS/SEMI menjadi Produk
-            if (prod.category === "DRUMBAND" || prod.category === "HTS" || prod.category === "SEMI") {
+            if (
+              prod.category === "DRUMBAND" ||
+              prod.category === "HTS" ||
+              prod.category === "SEMI"
+            ) {
               return {
                 ...prod,
                 subCategory: prod.category,
@@ -156,7 +154,7 @@ export function InventoryPage() {
           }),
       ];
       const staticMap = new Map(
-        inventoryItemsWithKind.map((base) => [base.code, base])
+        inventoryItemsWithKind.map((base) => [base.code, base]),
       );
       const fromApi = remoteMerged.map((it) => {
         const base = staticMap.get(it.code);
@@ -191,7 +189,10 @@ export function InventoryPage() {
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    items.forEach((item) => set.add(item.category));
+    items.forEach((item) => {
+      const cat = (item.category || "").trim();
+      if (cat) set.add(cat);
+    });
     return Array.from(set).sort();
   }, [items]);
 
@@ -294,19 +295,92 @@ export function InventoryPage() {
     return Array.from(holes).sort((a, b) => Number(a) - Number(b));
   }, [items]);
 
+  const escapeRegExp = useCallback((value: string) => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }, []);
+
+  const normalizeCategory = useCallback((value: string) => {
+    return (value || "").trim().toUpperCase();
+  }, []);
+
+  const pickPrefix = useCallback((category: string, fallbackName?: string) => {
+    const text = (category || fallbackName || "").toUpperCase();
+    if (text.includes("RING")) return "RING";
+    if (text.includes("LUG")) return "LUG";
+    if (text.includes("HAR")) return "HAR";
+    if (text.includes("HEAD")) return "HEAD";
+    if (text.includes("BODY")) return "BODY";
+    if (text.includes("FIN")) return "FIN";
+    if (text.includes("PIPE")) return "PIPE";
+    if (text.includes("ACC")) return "ACC";
+    if (text.includes("SPARE")) return "SPAREPART";
+    if (text.includes("BRACKET")) return "BRACKET";
+    if (text.includes("STRAINER")) return "STRAINER";
+    if (text.includes("STAND")) return "STAND";
+    if (text.includes("BELL")) return "BELL";
+    if (text.includes("MAHKOTA")) return "MAHKOTA";
+    if (text.includes("HOLDER")) return "HOLDER";
+    if (text.includes("RIM")) return "RIM";
+    const first = text.split(/\s+/)[0] ?? "";
+    return first.slice(0, 8) || "ITEM";
+  }, []);
+
+  const normalizeToken = (token: string) => token.replace(/[^A-Z0-9]/g, "");
+
+  const buildCodeBase = useCallback(
+    (name: string, category: string) => {
+      const words = name
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter(Boolean);
+      if (!words.length) return "";
+      const prefix = pickPrefix(category, name);
+      const body = words.slice(0, 3).map((w) => normalizeToken(w).slice(0, 6));
+      return [prefix, ...body].filter(Boolean).join("-");
+    },
+    [pickPrefix],
+  );
+
+  const suggestCode = useCallback(
+    (name: string, category: string) => {
+      const base = buildCodeBase(name, category);
+      if (!base) return "";
+      const baseUpper = base.toUpperCase();
+      const catNorm = normalizeCategory(category);
+      const existing = items
+        .filter((it) => normalizeCategory(it.category) === catNorm)
+        .map((it) => it.code.toUpperCase());
+      if (!existing.includes(baseUpper)) return baseUpper;
+      const re = new RegExp(`^${escapeRegExp(baseUpper)}-(\\d+)$`);
+      let max = 0;
+      existing.forEach((code) => {
+        const match = code.match(re);
+        if (match) {
+          const num = Number(match[1]);
+          if (Number.isFinite(num)) max = Math.max(max, num);
+        }
+      });
+      return `${baseUpper}-${String(max + 1).padStart(2, "0")}`;
+    },
+    [buildCodeBase, escapeRegExp, items, normalizeCategory],
+  );
+
   const paged = useMemo(() => {
     const start = (currentPage - 1) * perPage;
     return filtered.slice(start, start + perPage);
   }, [filtered, currentPage]);
 
   function openAddForm() {
+    if (readOnly) return;
     setEditing(null);
     setForm({ code: "", name: "", category: "", stock: 0 });
+    setManualCode(false);
     setFormError(null);
     setShowForm(true);
   }
 
   function openEditForm(item: InventoryItemWithKind) {
+    if (readOnly) return;
     setEditing(item);
     setForm({
       code: item.code,
@@ -314,11 +388,13 @@ export function InventoryPage() {
       category: item.category,
       stock: item.stock,
     });
+    setManualCode(true);
     setFormError(null);
     setShowForm(true);
   }
 
   async function saveForm() {
+    if (readOnly) return;
     setFormError(null);
     if (!form.code.trim() || !form.name.trim() || !form.category.trim()) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
@@ -339,7 +415,7 @@ export function InventoryPage() {
 
     if (!editing && items.some((it) => it.code === payload.code)) {
       setFormError(
-        "Kode sudah ada. Gunakan kode lain atau edit item tersebut."
+        "Kode sudah ada. Gunakan kode lain atau edit item tersebut.",
       );
       return;
     }
@@ -350,12 +426,11 @@ export function InventoryPage() {
       const targetUrl = editing
         ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
         : ITEMS_URL;
-      const res = await fetch(targetUrl, {
+      await httpJson(targetUrl, {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
       await fetchItems();
       setShowForm(false);
     } catch (err: unknown) {
@@ -368,13 +443,13 @@ export function InventoryPage() {
   }
 
   async function deleteItem(code: string) {
+    if (readOnly) return;
     setDeleting(true);
     setError(null);
     try {
-      const res = await fetch(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
+      await httpJson(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(await res.text());
       await fetchItems();
     } catch (err: unknown) {
       const message =
@@ -413,6 +488,8 @@ export function InventoryPage() {
     setShowForm(false);
   }
 
+  const columnCount = readOnly ? 5 : 6;
+
   return (
     <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
       <div className="space-y-6">
@@ -435,13 +512,15 @@ export function InventoryPage() {
                 <Download className="h-4 w-4" />
                 Export Excel
               </Button>
-              <Button
-                className="bg-sky-600 text-white hover:bg-sky-700"
-                onClick={openAddForm}
-              >
-                <Plus className="h-4 w-4" />
-                Tambah Barang
-              </Button>
+              {!readOnly && (
+                <Button
+                  className="bg-sky-600 text-white hover:bg-sky-700"
+                  onClick={openAddForm}
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Barang
+                </Button>
+              )}
             </div>
           </div>
           <p className="text-sm text-slate-600">
@@ -606,8 +685,8 @@ export function InventoryPage() {
                   {ringSubCategory === "all"
                     ? "Model"
                     : ringSubCategory === "SNARE"
-                    ? "Snare"
-                    : "Tom"}
+                      ? "Snare"
+                      : "Tom"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -720,9 +799,7 @@ export function InventoryPage() {
                   className="h-9 px-3"
                 >
                   <Package className="mr-2 h-4 w-4" />
-                  {productSubCategory === "all"
-                    ? "Jenis"
-                    : productSubCategory}
+                  {productSubCategory === "all" ? "Jenis" : productSubCategory}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -731,13 +808,17 @@ export function InventoryPage() {
                 <DropdownMenuItem onSelect={() => setProductSubCategory("all")}>
                   Semua
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("DRUMBAND")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("DRUMBAND")}
+                >
                   DRUMBAND
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setProductSubCategory("HTS")}>
                   HTS
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("SEMI")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("SEMI")}
+                >
                   SEMI
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -755,14 +836,14 @@ export function InventoryPage() {
                   <TableHead>Nama Barang</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Stok</TableHead>
-                  <TableHead>Aksi</TableHead>
+                  {!readOnly && <TableHead>Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={columnCount}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Memuat data...
@@ -779,7 +860,11 @@ export function InventoryPage() {
                         displayCode={displayCode}
                         rowNumber={rowNumber}
                         onEdit={() => openEditForm(item)}
-                        onDelete={() => setPendingDelete(item)}
+                        onDelete={() => {
+                          if (readOnly) return;
+                          setPendingDelete(item);
+                        }}
+                        readOnly={readOnly}
                       />
                     );
                   })
@@ -787,7 +872,7 @@ export function InventoryPage() {
                 {!loading && filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={columnCount}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Tidak ada barang yang cocok.
@@ -857,7 +942,7 @@ export function InventoryPage() {
             <AlertDialogAction
               className="bg-red-600 text-white hover:bg-red-700"
               onClick={confirmDelete}
-              disabled={deleting}
+              disabled={deleting || readOnly}
             >
               {deleting ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
@@ -865,7 +950,7 @@ export function InventoryPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {showForm ? (
+      {showForm && !readOnly ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -893,9 +978,10 @@ export function InventoryPage() {
                 </label>
                 <Input
                   value={form.code}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, code: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setManualCode(true);
+                    setForm((f) => ({ ...f, code: e.target.value }));
+                  }}
                   placeholder="Kode unik"
                   className="h-11"
                   disabled={!!editing}
@@ -907,9 +993,17 @@ export function InventoryPage() {
                 </label>
                 <Input
                   value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => {
+                      const next = { ...f, name: value };
+                      if (!editing && !manualCode) {
+                        const auto = suggestCode(value, f.category);
+                        if (auto) next.code = auto;
+                      }
+                      return next;
+                    });
+                  }}
                   placeholder="Nama barang"
                   className="h-11"
                 />
@@ -920,12 +1014,26 @@ export function InventoryPage() {
                 </label>
                 <Input
                   value={form.category}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, category: e.target.value }))
-                  }
-                  placeholder="Kategori"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => {
+                      const next = { ...f, category: value };
+                      if (!editing && !manualCode) {
+                        const auto = suggestCode(f.name, value);
+                        if (auto) next.code = auto;
+                      }
+                      return next;
+                    });
+                  }}
+                  list="category-options"
+                  placeholder="Pilih atau ketik kategori"
                   className="h-11"
                 />
+                <datalist id="category-options">
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
@@ -974,12 +1082,14 @@ function Row({
   rowNumber,
   onEdit,
   onDelete,
+  readOnly,
 }: {
   item: InventoryItemWithKind;
   displayCode: string;
   rowNumber: number;
   onEdit: () => void;
   onDelete: () => void;
+  readOnly?: boolean;
 }) {
   const status = getStatus(item.stock);
   return (
@@ -995,9 +1105,11 @@ function Row({
       <TableCell className="font-semibold text-slate-900">
         {item.stock}
       </TableCell>
-      <TableCell>
-        <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
-      </TableCell>
+      {!readOnly && (
+        <TableCell>
+          <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
+        </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -1120,7 +1232,7 @@ function getRingHoles(item: InventoryItemWithKind): string | null {
 
 function applySheetStyles(
   worksheet: XLSX.WorkSheet,
-  rows: Array<Array<string | number>>
+  rows: Array<Array<string | number>>,
 ) {
   const ref = worksheet["!ref"];
   if (!ref) return;

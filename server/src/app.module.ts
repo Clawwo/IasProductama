@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from './auth/roles.guard.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -28,6 +30,6 @@ import { ProductsModule } from './products/products.module.js';
     ProductsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, JwtAuthGuard, RolesGuard],
 })
 export class AppModule {}

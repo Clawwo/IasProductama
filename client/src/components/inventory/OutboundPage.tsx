@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,7 +132,7 @@ export function OutboundPage() {
   const [lineItem, setLineItem] = useState({
     code: "",
     name: "",
-    qty: 1,
+    qty: "1",
     note: "",
   });
   const [searchTerm, setSearchTerm] = useState("");
@@ -175,19 +176,11 @@ export function OutboundPage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const [itemsRes, rawRes, prodRes] = await Promise.all([
-        fetch(ITEMS_URL),
-        fetch(RAW_URL),
-        fetch(PRODUCTS_URL),
+      const [itemsData, rawData, prodData] = await Promise.all([
+        httpJson<RemoteItem[]>(ITEMS_URL),
+        httpJson<RemoteItem[]>(RAW_URL),
+        httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
-
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
-      if (!rawRes.ok) throw new Error(await rawRes.text());
-      if (!prodRes.ok) throw new Error(await prodRes.text());
-
-      const itemsData = (await itemsRes.json()) as RemoteItem[];
-      const rawData = (await rawRes.json()) as RemoteItem[];
-      const prodData = (await prodRes.json()) as RemoteItem[];
 
       setRemoteItems(itemsData);
       setRawItems(rawData);
@@ -697,11 +690,12 @@ export function OutboundPage() {
   );
 
   function addLine() {
+    const qty = Number(lineItem.qty);
     if (!lineItem.code || !lineItem.name) {
       setFormError("Pilih barang terlebih dahulu.");
       return;
     }
-    if (lineItem.qty <= 0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       setFormError("Qty harus lebih dari 0.");
       return;
     }
@@ -716,7 +710,7 @@ export function OutboundPage() {
               ? `${l.note} | ${newNote}`
               : newNote
             : l.note;
-          return { ...l, qty: l.qty + lineItem.qty, note: combinedNote };
+          return { ...l, qty: l.qty + qty, note: combinedNote };
         });
       }
       return [
@@ -725,12 +719,12 @@ export function OutboundPage() {
           id: crypto.randomUUID(),
           code: lineItem.code,
           name: lineItem.name,
-          qty: lineItem.qty,
+          qty,
           note: newNote || undefined,
         },
       ];
     });
-    setLineItem({ code: "", name: "", qty: 1, note: "" });
+    setLineItem({ code: "", name: "", qty: "1", note: "" });
     setSearchTerm("");
     setFormError("");
     pushToast(
@@ -773,16 +767,11 @@ export function OutboundPage() {
       const isUpdate = Boolean(draftId);
       const targetUrl = isUpdate ? `${DRAFTS_URL}/${draftId}` : DRAFTS_URL;
       const method = isUpdate ? "PUT" : "POST";
-      const res = await fetch(targetUrl, {
+      const data = await httpJson<{ id?: string }>(targetUrl, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "OUTBOUND", payload }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan draft");
-      }
-      const data = (await res.json()) as { id?: string };
       if (data?.id) setDraftId(data.id);
       setDraftStatus("Draft tersimpan");
       pushToast(
@@ -835,16 +824,12 @@ export function OutboundPage() {
       setSubmitStatus("loading");
       setSubmitMessage("");
       setFormError("");
-      const res = await fetch(OUTBOUND_URL, {
+      const requestHeaders = { "Content-Type": "application/json" };
+      const data = await httpJson<{ code?: string }>(OUTBOUND_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: requestHeaders,
         body: JSON.stringify(payload),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menyimpan");
-      }
-      const data = (await res.json()) as { code?: string };
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
       setSubmitStatus("success");
       setSubmitMessage(
@@ -1158,7 +1143,7 @@ export function OutboundPage() {
               min={1}
               value={lineItem.qty}
               onChange={(e) =>
-                setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))
+                setLineItem((l) => ({ ...l, qty: e.target.value }))
               }
             />
             <Button onClick={addLine}>
