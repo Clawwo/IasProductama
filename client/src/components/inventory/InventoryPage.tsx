@@ -80,7 +80,7 @@ type RemoteItem = {
   stock: number;
 };
 
-export function InventoryPage() {
+export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   const [items, setItems] = useState<InventoryItemWithKind[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -300,6 +300,7 @@ export function InventoryPage() {
   }, [filtered, currentPage]);
 
   function openAddForm() {
+    if (readOnly) return;
     setEditing(null);
     setForm({ code: "", name: "", category: "", stock: 0 });
     setFormError(null);
@@ -307,6 +308,7 @@ export function InventoryPage() {
   }
 
   function openEditForm(item: InventoryItemWithKind) {
+    if (readOnly) return;
     setEditing(item);
     setForm({
       code: item.code,
@@ -319,6 +321,7 @@ export function InventoryPage() {
   }
 
   async function saveForm() {
+    if (readOnly) return;
     setFormError(null);
     if (!form.code.trim() || !form.name.trim() || !form.category.trim()) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
@@ -347,15 +350,54 @@ export function InventoryPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const targetUrl = editing
-        ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
-        : ITEMS_URL;
-      const res = await fetch(targetUrl, {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const code = encodeURIComponent(payload.code);
+      
+      if (editing) {
+        // For editing, try all three endpoints to find which table has the item
+        const endpoints = [
+          { url: `${ITEMS_URL}/${code}`, label: "Item" },
+          { url: `${RAW_URL}/${code}`, label: "Raw Material" },
+          { url: `${PRODUCTS_URL}/${code}`, label: "Product" },
+        ];
+        
+        let success = false;
+        const errorDetails: string[] = [];
+        for (const endpoint of endpoints) {
+          const isRaw = endpoint.url.includes("/api/raw-materials/");
+          const bodyPayload = isRaw
+            // Raw materials PATCH schema forbids extra props; exclude `code`
+            ? { name: payload.name, category: payload.category, subCategory: payload.subCategory, kind: payload.kind, stock: payload.stock }
+            : payload;
+          const res = await fetch(endpoint.url, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload),
+          });
+          if (res.ok) {
+            success = true;
+            break;
+          } else {
+            try {
+              const msg = await res.text();
+              errorDetails.push(`[${endpoint.label}] ${res.status}: ${msg || "Request failed"}`);
+            } catch {
+              errorDetails.push(`[${endpoint.label}] ${res.status}: Request failed`);
+            }
+          }
+        }
+        if (!success) {
+          throw new Error(errorDetails.join(" | ") || "Item tidak ditemukan di database");
+        }
+      } else {
+        // For creating, use items endpoint by default
+        const res = await fetch(ITEMS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
+      }
+      
       await fetchItems();
       setShowForm(false);
     } catch (err: unknown) {
@@ -368,13 +410,40 @@ export function InventoryPage() {
   }
 
   async function deleteItem(code: string) {
+    if (readOnly) return;
     setDeleting(true);
     setError(null);
     try {
-      const res = await fetch(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const encodedCode = encodeURIComponent(code);
+      
+      // Try all three endpoints to find which table has the item
+      const endpoints = [
+        { url: `${ITEMS_URL}/${encodedCode}`, label: "Item" },
+        { url: `${RAW_URL}/${encodedCode}`, label: "Raw Material" },
+        { url: `${PRODUCTS_URL}/${encodedCode}`, label: "Product" },
+      ];
+
+      let success = false;
+      const errorDetails: string[] = [];
+      for (const endpoint of endpoints) {
+        const res = await fetch(endpoint.url, { method: "DELETE" });
+        if (res.ok) {
+          success = true;
+          break;
+        } else {
+          try {
+            const msg = await res.text();
+            errorDetails.push(`[${endpoint.label}] ${res.status}: ${msg || "Request failed"}`);
+          } catch {
+            errorDetails.push(`[${endpoint.label}] ${res.status}: Request failed`);
+          }
+        }
+      }
+
+      if (!success) {
+        throw new Error(errorDetails.join(" | ") || "Item tidak ditemukan di database");
+      }
+      
       await fetchItems();
     } catch (err: unknown) {
       const message =
@@ -435,13 +504,15 @@ export function InventoryPage() {
                 <Download className="h-4 w-4" />
                 Export Excel
               </Button>
-              <Button
-                className="bg-sky-600 text-white hover:bg-sky-700"
-                onClick={openAddForm}
-              >
-                <Plus className="h-4 w-4" />
-                Tambah Barang
-              </Button>
+              {!readOnly ? (
+                <Button
+                  className="bg-sky-600 text-white hover:bg-sky-700"
+                  onClick={openAddForm}
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Barang
+                </Button>
+              ) : null}
             </div>
           </div>
           <p className="text-sm text-slate-600">
@@ -755,14 +826,14 @@ export function InventoryPage() {
                   <TableHead>Nama Barang</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Stok</TableHead>
-                  <TableHead>Aksi</TableHead>
+                  {!readOnly ? <TableHead>Aksi</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={readOnly ? 5 : 6}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Memuat data...
@@ -778,6 +849,7 @@ export function InventoryPage() {
                         item={item}
                         displayCode={displayCode}
                         rowNumber={rowNumber}
+                        readOnly={readOnly}
                         onEdit={() => openEditForm(item)}
                         onDelete={() => setPendingDelete(item)}
                       />
@@ -787,7 +859,7 @@ export function InventoryPage() {
                 {!loading && filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={readOnly ? 5 : 6}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Tidak ada barang yang cocok.
@@ -833,39 +905,41 @@ export function InventoryPage() {
         </Pager>
       </div>
 
-      <AlertDialog
-        open={!!pendingDelete}
-        onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hapus barang ini?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Barang{" "}
-              <span className="font-semibold text-slate-900">
-                {pendingDelete?.name}
-              </span>{" "}
-              akan dihapus dari daftar.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingDelete(null)}>
-              Batal
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? "Menghapus..." : "Hapus"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {!readOnly ? (
+        <AlertDialog
+          open={!!pendingDelete}
+          onOpenChange={(open) => {
+            if (!open) setPendingDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hapus barang ini?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Barang{" "}
+                <span className="font-semibold text-slate-900">
+                  {pendingDelete?.name}
+                </span>{" "}
+                akan dihapus dari daftar.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingDelete(null)}>
+                Batal
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-700"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Menghapus..." : "Hapus"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
 
-      {showForm ? (
+      {showForm && !readOnly ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -974,12 +1048,14 @@ function Row({
   rowNumber,
   onEdit,
   onDelete,
+  readOnly,
 }: {
   item: InventoryItemWithKind;
   displayCode: string;
   rowNumber: number;
   onEdit: () => void;
   onDelete: () => void;
+  readOnly?: boolean;
 }) {
   const status = getStatus(item.stock);
   return (
@@ -995,9 +1071,11 @@ function Row({
       <TableCell className="font-semibold text-slate-900">
         {item.stock}
       </TableCell>
-      <TableCell>
-        <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
-      </TableCell>
+      {!readOnly ? (
+        <TableCell>
+          <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
+        </TableCell>
+      ) : null}
     </TableRow>
   );
 }
@@ -1158,4 +1236,4 @@ function applySheetStyles(
   if (cols && cols.length > 0) {
     worksheet["!cols"] = cols;
   }
-}
+ }

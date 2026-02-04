@@ -7,6 +7,7 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
+    seed: 'psql "postgresql://postgres.fysjbxgdbjqhalesmlri:DKIkFRZIKBuZbtPU@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require&sslaccept=accept_invalid_certs" -f prisma/seed.sql',
   },
   datasource: {
     url: process.env['DATABASE_URL'],

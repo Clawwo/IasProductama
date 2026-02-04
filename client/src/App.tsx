@@ -68,9 +68,11 @@ type View =
 function SidebarNav({
   active = "dashboard",
   onNavigate,
+  role,
 }: {
   active?: AppNavKey;
   onNavigate?: (key: AppNavKey) => void;
+  role?: string;
 }) {
   const items: Array<{
     key: AppNavKey;
@@ -113,6 +115,11 @@ function SidebarNav({
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
   ];
 
+  const isViewer = role === "VIEWER";
+  const filteredItems = isViewer
+    ? items.filter((item) => item.key === "inventory" || item.key === "riwayat")
+    : items;
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -135,7 +142,7 @@ function SidebarNav({
           <SidebarGroupLabel>Menu utama</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <SidebarMenuItem key={item.key}>
                   <SidebarMenuButton
                     isActive={active === item.key}
@@ -179,6 +186,7 @@ function Shell({
   title,
   view,
   userEmail,
+  userRole,
   onNavigate,
   onLogout,
   logoutLoading,
@@ -187,6 +195,7 @@ function Shell({
   title: string;
   view: View;
   userEmail?: string;
+  userRole?: string;
   onNavigate: (key: AppNavKey) => void;
   onLogout: () => void;
   logoutLoading: boolean;
@@ -195,7 +204,7 @@ function Shell({
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
-        <SidebarNav active={view} onNavigate={onNavigate} />
+        <SidebarNav active={view} onNavigate={onNavigate} role={userRole} />
         <SidebarInset className="flex-1">
           <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white/90 px-4 py-3 backdrop-blur md:px-6">
             <SidebarTrigger />
@@ -262,6 +271,9 @@ function App() {
     enabled: false,
   });
 
+  const isViewer = user?.role === "VIEWER";
+  const viewerAllowedViews: View[] = ["inventory", "riwayat"];
+
   useEffect(() => {
     let mounted = true;
     const onHashChange = () => {
@@ -300,6 +312,15 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    if (!isViewer) return;
+    if (!viewerAllowedViews.includes(view)) {
+      setView("inventory");
+      window.location.hash = "#inventory";
+    }
+  }, [isViewer, user, view]);
+
   const loginMutation = useMutation({
     mutationFn: () => login({ email, password }),
     onSuccess: (data) => {
@@ -326,6 +347,11 @@ function App() {
   });
 
   const handleNavigate = (key: AppNavKey) => {
+    if (isViewer && key !== "inventory" && key !== "riwayat") {
+      setView("inventory");
+      window.location.hash = "#inventory";
+      return;
+    }
     const map: Record<AppNavKey, View> = {
       dashboard: "dashboard",
       inventory: "inventory",
@@ -409,6 +435,7 @@ function App() {
         title="Dashboard"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -424,11 +451,12 @@ function App() {
         title="Inventory"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <InventoryPage />
+        <InventoryPage readOnly={isViewer} />
       </Shell>
     );
   }
@@ -439,6 +467,7 @@ function App() {
         title="Barang Keluar"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -454,6 +483,7 @@ function App() {
         title="Bahan Baku Keluar"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -469,6 +499,7 @@ function App() {
         title="Draft"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -484,6 +515,7 @@ function App() {
         title="Riwayat"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -499,6 +531,7 @@ function App() {
         title="Produksi"
         view={view}
         userEmail={user?.email}
+        userRole={user?.role}
         onNavigate={handleNavigate}
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
@@ -513,6 +546,7 @@ function App() {
       title="Barang Masuk"
       view={view}
       userEmail={user?.email}
+      userRole={user?.role}
       onNavigate={handleNavigate}
       onLogout={() => logoutMutation.mutate()}
       logoutLoading={logoutMutation.isPending}
