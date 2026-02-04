@@ -37,6 +37,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { httpJson } from "@/lib/http"; // Added import for httpJson
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -192,20 +193,10 @@ export function RiwayatPage() {
     let cancelled = false;
     const loadItems = async () => {
       try {
-        const [resItems, resRaw] = await Promise.all([
-          fetch(ITEMS_URL),
-          fetch(RAW_ITEMS_URL),
+        const [data, rawData] = await Promise.all([
+          httpJson<Array<{ code: string; name?: string }>>(ITEMS_URL),
+          httpJson<Array<{ code: string; name?: string }>>(RAW_ITEMS_URL),
         ]);
-        if (!resItems.ok) throw new Error(await resItems.text());
-        if (!resRaw.ok) throw new Error(await resRaw.text());
-        const data = (await resItems.json()) as Array<{
-          code: string;
-          name?: string;
-        }>;
-        const rawData = (await resRaw.json()) as Array<{
-          code: string;
-          name?: string;
-        }>;
         if (!cancelled) {
           setItems(data);
           setRawItems(rawData);
@@ -226,20 +217,13 @@ export function RiwayatPage() {
     setError(null);
     try {
       const limit = 1000;
-      const [inRes, outRes, rawOutRes, prodRes] = await Promise.all([
-        fetch(`${INBOUND_URL}?limit=${limit}`),
-        fetch(`${OUTBOUND_URL}?limit=${limit}`),
-        fetch(`${RAW_OUTBOUND_URL}?limit=${limit}`),
-        fetch(`${PRODUCTION_URL}?limit=${limit}`),
-      ]);
-      if (!inRes.ok) throw new Error(await inRes.text());
-      if (!outRes.ok) throw new Error(await outRes.text());
-      if (!rawOutRes.ok) throw new Error(await rawOutRes.text());
-      if (!prodRes.ok) throw new Error(await prodRes.text());
-      const inboundData = (await inRes.json()) as InboundApi[];
-      const outboundData = (await outRes.json()) as OutboundApi[];
-      const rawOutboundData = (await rawOutRes.json()) as RawOutboundApi[];
-      const productionData = (await prodRes.json()) as ProductionApi[];
+      const [inboundData, outboundData, rawOutboundData, productionData] =
+        await Promise.all([
+          httpJson<InboundApi[]>(`${INBOUND_URL}?limit=${limit}`),
+          httpJson<OutboundApi[]>(`${OUTBOUND_URL}?limit=${limit}`),
+          httpJson<RawOutboundApi[]>(`${RAW_OUTBOUND_URL}?limit=${limit}`),
+          httpJson<ProductionApi[]>(`${PRODUCTION_URL}?limit=${limit}`),
+        ]);
       setInbound(inboundData);
       setOutbound(outboundData);
       setRawOutbound(rawOutboundData);

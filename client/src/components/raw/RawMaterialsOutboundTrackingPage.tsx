@@ -85,13 +85,15 @@ type LineForm = {
   note?: string;
 };
 
+type LineFormState = Omit<LineForm, "qty"> & { qty: string };
+
 type ToastVariant = "default" | "destructive";
 
 export function RawMaterialsOutboundTrackingPage() {
   const [artisan, setArtisan] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
-  const [lineForm, setLineForm] = useState<LineForm>({
+  const [lineForm, setLineForm] = useState<LineFormState>({
     id: "",
     code: "",
     name: "",
@@ -99,7 +101,7 @@ export function RawMaterialsOutboundTrackingPage() {
     subCategory: "",
     kind: "",
     batchCode: "",
-    qty: 1,
+    qty: "1",
     note: "",
   });
   const [lines, setLines] = useState<LineForm[]>([]);
@@ -129,7 +131,7 @@ export function RawMaterialsOutboundTrackingPage() {
       subCategory: "",
       kind: "",
       batchCode: "",
-      qty: 1,
+      qty: "1",
       note: "",
     });
   };
@@ -272,13 +274,14 @@ export function RawMaterialsOutboundTrackingPage() {
     }));
   };
 
-  const validateLine = (line: LineForm) => {
+  const validateLine = (line: LineFormState) => {
     const code = line.code.trim();
     const batch = line.batchCode.trim();
+    const qty = Number(line.qty);
     if (!code) return "Pilih kode bahan baku.";
     if (!rawLookup.has(code)) return "Kode tidak dikenal. Pilih dari daftar.";
     if (!batch) return "Batch wajib diisi.";
-    if (!Number.isFinite(line.qty) || line.qty <= 0) return "Qty minimal 1.";
+    if (!Number.isFinite(qty) || qty <= 0) return "Qty minimal 1.";
     return null;
   };
 
@@ -650,7 +653,7 @@ export function RawMaterialsOutboundTrackingPage() {
               onChange={(e) =>
                 setLineForm((prev) => ({
                   ...prev,
-                  qty: Number(e.target.value),
+                  qty: e.target.value,
                 }))
               }
             />

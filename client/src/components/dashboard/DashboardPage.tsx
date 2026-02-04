@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import { SummaryChart } from "./SummaryChart";
 
 export type AppNavKey =
@@ -32,7 +33,8 @@ export type AppNavKey =
   | "bahan-keluar"
   | "drafts"
   | "produksi"
-  | "riwayat";
+  | "riwayat"
+  | "users";
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
@@ -286,9 +288,7 @@ export function DashboardPage({
       setLoadingStock(true);
       setStockError(null);
       try {
-        const res = await fetch(ITEMS_URL);
-        if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as ItemApi[];
+        const data = await httpJson<ItemApi[]>(ITEMS_URL);
         if (!cancelled) setItems(data);
       } catch (err: unknown) {
         const message =
@@ -310,14 +310,10 @@ export function DashboardPage({
       setLoadingHistory(true);
       setHistoryError(null);
       try {
-        const [inRes, outRes] = await Promise.all([
-          fetch(`${INBOUND_URL}?limit=30`),
-          fetch(`${OUTBOUND_URL}?limit=30`),
+        const [inboundData, outboundData] = await Promise.all([
+          httpJson<InboundApi[]>(`${INBOUND_URL}?limit=30`),
+          httpJson<OutboundApi[]>(`${OUTBOUND_URL}?limit=30`),
         ]);
-        if (!inRes.ok) throw new Error(await inRes.text());
-        if (!outRes.ok) throw new Error(await outRes.text());
-        const inboundData = (await inRes.json()) as InboundApi[];
-        const outboundData = (await outRes.json()) as OutboundApi[];
         if (!cancelled) {
           setInbound(inboundData);
           setOutbound(outboundData);

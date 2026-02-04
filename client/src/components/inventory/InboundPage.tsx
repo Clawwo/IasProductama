@@ -119,7 +119,7 @@ export function InboundPage() {
   const [lineItem, setLineItem] = useState({
     code: "",
     name: "",
-    qty: 1,
+    qty: "1",
     note: "",
   });
   const [searchTerm, setSearchTerm] = useState("");
@@ -658,7 +658,7 @@ export function InboundPage() {
         },
       ];
     });
-    setLineItem({ code: "", name: "", qty: 1, note: "" });
+    setLineItem({ code: "", name: "", qty: "1", note: "" });
     setSearchTerm("");
     setFormError("");
     pushToast(
@@ -1087,7 +1087,7 @@ export function InboundPage() {
               min={1}
               value={lineItem.qty}
               onChange={(e) =>
-                setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))
+                setLineItem((l) => ({ ...l, qty: e.target.value }))
               }
             />
             <Button onClick={addLine}>

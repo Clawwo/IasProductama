@@ -225,6 +225,7 @@ model RawMaterialOutboundLine {
 enum Role {
   ADMIN
   PETUGAS
+  PELIHAT
 }
 
 enum DraftType {

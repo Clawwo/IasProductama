@@ -51,7 +51,7 @@ type LineItem = {
   id: string;
   code: string;
   name: string;
-  qty: number;
+  qty: number | string;
   note?: string;
   sourceType?: "ITEM" | "BAHAN_BAKU";
   auto?: boolean;
@@ -109,14 +109,14 @@ export function ProductionPage() {
     id: "seed-finished",
     code: "",
     name: "",
-    qty: 1,
+    qty: "1",
     note: "",
   });
   const [rawLine, setRawLine] = useState<LineItem>({
     id: "seed-raw",
     code: "",
     name: "",
-    qty: 1,
+    qty: "1",
     note: "",
     sourceType: "BAHAN_BAKU",
   });
@@ -151,14 +151,10 @@ export function ProductionPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [prodRes, rawRes] = await Promise.all([
-        fetch(PRODUCTS_URL),
-        fetch(RAW_URL),
+      const [itemsData, rawData] = await Promise.all([
+        httpJson<RemoteItem[]>(PRODUCTS_URL),
+        httpJson<RemoteItem[]>(RAW_URL),
       ]);
-      if (!prodRes.ok) throw new Error(await prodRes.text());
-      if (!rawRes.ok) throw new Error(await rawRes.text());
-      const itemsData = (await prodRes.json()) as RemoteItem[];
-      const rawData = (await rawRes.json()) as RemoteItem[];
       setProducts(itemsData);
       setRawItems(rawData);
     } catch (err: unknown) {
@@ -362,13 +358,13 @@ export function ProductionPage() {
         if (!key) return;
         const bom = bomCache[key];
         if (!bom) return;
-        const finishedQty = finished.qty || 0;
+        const finishedQty = Number(finished.qty || 0);
         bom.lines.forEach((line) => {
           const baseKey = line.code || line.name || "";
           if (!baseKey) return;
           const aggKey = line.code ?? baseKey;
           const name = line.name ?? line.code ?? baseKey;
-          const qtyToAdd = (line.qty || 0) * finishedQty;
+          const qtyToAdd = Number(line.qty || 0) * finishedQty;
           const rawMeta = line.code
             ? rawItems.find((it) => it.code === line.code)
             : rawNameIndex.get(normalize(name));
@@ -413,12 +409,7 @@ export function ProductionPage() {
       if (!item.code && !item.name) return null;
 
       try {
-        const res = await fetch(`${BOM_URL}?${params.toString()}`);
-        if (!res.ok) {
-          if (res.status === 404) return null;
-          throw new Error(await res.text());
-        }
-        const data = (await res.json()) as BomEntry;
+        const data = await httpJson<BomEntry>(`${BOM_URL}?${params.toString()}`);
         if (key) {
           setBomCache((prev) => ({ ...prev, [key]: data }));
         }
@@ -449,9 +440,7 @@ export function ProductionPage() {
         if (!line.code && !line.name) continue;
 
         try {
-          const res = await fetch(`${BOM_URL}?${params.toString()}`);
-          if (!res.ok) continue;
-          const data = (await res.json()) as BomEntry;
+          const data = await httpJson<BomEntry>(`${BOM_URL}?${params.toString()}`);
           setBomCache((prev) => ({ ...prev, [key]: data }));
         } catch (err) {
           console.error("Failed to prefetch BOM", err);
@@ -461,11 +450,12 @@ export function ProductionPage() {
   }, [finishedLines, bomCache]);
 
   async function addFinished() {
+    const qty = Number(finishedLine.qty);
     if (!finishedLine.code || !finishedLine.name) {
       pushToast("destructive", "Pilih barang jadi", "Isi kode dan nama dulu.");
       return;
     }
-    if (finishedLine.qty <= 0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       pushToast("destructive", "Qty salah", "Qty harus lebih dari 0.");
       return;
     }
@@ -479,7 +469,7 @@ export function ProductionPage() {
           l.code === finishedLine.code
             ? {
                 ...l,
-                qty: l.qty + finishedLine.qty,
+                qty: Number(l.qty || 0) + qty,
                 note: newNote
                   ? l.note
                     ? `${l.note} | ${newNote}`
@@ -496,7 +486,7 @@ export function ProductionPage() {
           code: finishedLine.code,
           name: finishedLine.name,
           auto: false,
-          qty: finishedLine.qty,
+          qty,
           note: newNote || undefined,
         },
       ];
@@ -525,18 +515,19 @@ export function ProductionPage() {
       id: "seed-finished",
       code: "",
       name: "",
-      qty: 1,
+      qty: "1",
       note: "",
     });
     setFinishedSearch("");
   }
 
   function addRaw() {
+    const qty = Number(rawLine.qty);
     if (!rawLine.code || !rawLine.name) {
       pushToast("destructive", "Pilih bahan baku", "Isi kode dan nama dulu.");
       return;
     }
-    if (rawLine.qty <= 0) {
+    if (!Number.isFinite(qty) || qty <= 0) {
       pushToast("destructive", "Qty salah", "Qty harus lebih dari 0.");
       return;
     }
@@ -548,7 +539,7 @@ export function ProductionPage() {
           l.code === rawLine.code
             ? {
                 ...l,
-                qty: l.qty + rawLine.qty,
+                qty: Number(l.qty || 0) + qty,
                 note: newNote
                   ? l.note
                     ? `${l.note} | ${newNote}`
@@ -564,7 +555,7 @@ export function ProductionPage() {
           id: crypto.randomUUID(),
           code: rawLine.code,
           name: rawLine.name,
-          qty: rawLine.qty,
+          qty,
           note: newNote || undefined,
         },
       ];
@@ -573,7 +564,7 @@ export function ProductionPage() {
       id: "seed-raw",
       code: "",
       name: "",
-      qty: 1,
+      qty: "1",
       note: "",
       sourceType: "BAHAN_BAKU",
     });
@@ -705,14 +696,14 @@ export function ProductionPage() {
         id: "seed-finished",
         code: "",
         name: "",
-        qty: 1,
+        qty: "1",
         note: "",
       });
       setRawLine({
         id: "seed-raw",
         code: "",
         name: "",
-        qty: 1,
+        qty: "1",
         note: "",
         sourceType: "BAHAN_BAKU",
       });
@@ -728,11 +719,11 @@ export function ProductionPage() {
   }
 
   const finishedTotalQty = useMemo(
-    () => finishedLines.reduce((sum, l) => sum + l.qty, 0),
+    () => finishedLines.reduce((sum, l) => sum + Number(l.qty || 0), 0),
     [finishedLines],
   );
   const rawTotalQty = useMemo(
-    () => rawLines.reduce((sum, l) => sum + l.qty, 0),
+    () => rawLines.reduce((sum, l) => sum + Number(l.qty || 0), 0),
     [rawLines],
   );
 
@@ -1147,7 +1138,7 @@ function LineComposer({
         min={1}
         value={lineItem.qty}
         onChange={(e) =>
-          setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))
+          setLineItem((l) => ({ ...l, qty: e.target.value }))
         }
       />
       <Button onClick={onAdd}>
