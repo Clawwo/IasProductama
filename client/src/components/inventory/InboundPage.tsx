@@ -120,7 +120,7 @@ export function InboundPage() {
   const [lineItem, setLineItem] = useState({
     code: "",
     name: "",
-    qty: 1,
+    qty: "1",
     note: "",
   });
   const [searchTerm, setSearchTerm] = useState("");
@@ -171,7 +171,7 @@ export function InboundPage() {
     } catch (err: unknown) {
       const message = toUserMessage(
         err,
-        "Tidak bisa mengambil data stok. Coba muat ulang."
+        "Tidak bisa mengambil data stok. Coba muat ulang.",
       );
       pushToast("destructive", "Gagal memuat stok", message);
     }
@@ -206,7 +206,7 @@ export function InboundPage() {
       setDate(
         typeof payload.date === "string" && payload.date
           ? payload.date.slice(0, 10)
-          : date
+          : date,
       );
       setNote(typeof payload.note === "string" ? payload.note : "");
       const incomingLines = Array.isArray(payload.lines)
@@ -227,13 +227,13 @@ export function InboundPage() {
       pushToast(
         "default",
         "Draft dimuat",
-        "Data draft barang masuk telah dimuat ke formulir."
+        "Data draft barang masuk telah dimuat ke formulir.",
       );
     } catch {
       pushToast(
         "destructive",
         "Gagal memuat draft",
-        "Draft tidak bisa dibaca."
+        "Draft tidak bisa dibaca.",
       );
     } finally {
       sessionStorage.removeItem("draft:pending-load");
@@ -271,7 +271,7 @@ export function InboundPage() {
 
   const selectedItem = useMemo(
     () => mergedItems.find((it) => it.code === lineItem.code),
-    [mergedItems, lineItem.code]
+    [mergedItems, lineItem.code],
   );
 
   const categories = useMemo(() => {
@@ -617,7 +617,7 @@ export function InboundPage() {
 
   const visibleItems = useMemo(
     () => filteredItems.slice(0, 50),
-    [filteredItems]
+    [filteredItems],
   );
 
   function addLine() {
@@ -659,13 +659,13 @@ export function InboundPage() {
         },
       ];
     });
-    setLineItem({ code: "", name: "", qty: 1, note: "" });
+    setLineItem({ code: "", name: "", qty: "1", note: "" });
     setSearchTerm("");
     setFormError("");
     pushToast(
       "default",
       "Baris ditambahkan",
-      `${code} - ${target.name ?? code}`
+      `${code} - ${target.name ?? code}`,
     );
   }
 
@@ -715,7 +715,7 @@ export function InboundPage() {
       pushToast(
         "default",
         "Draft tersimpan",
-        "Draft barang masuk berhasil disimpan."
+        "Draft barang masuk berhasil disimpan.",
       );
     } catch (err: unknown) {
       const message = toUserMessage(err, "Gagal menyimpan draft.");
@@ -740,7 +740,7 @@ export function InboundPage() {
       return;
     }
     const unknownLine = lines.find((l) =>
-      mergedItems.every((it) => it.code !== l.code)
+      mergedItems.every((it) => it.code !== l.code),
     );
     if (unknownLine) {
       setFormError(`Kode ${unknownLine.code} tidak dikenali.`);
@@ -782,14 +782,16 @@ export function InboundPage() {
       const codeMessage = data?.code ? `Kode: ${data.code}` : undefined;
       setSubmitStatus("success");
       setSubmitMessage(
-        codeMessage ? `Berhasil disimpan. ${codeMessage}` : "Berhasil disimpan."
+        codeMessage
+          ? `Berhasil disimpan. ${codeMessage}`
+          : "Berhasil disimpan.",
       );
       pushToast(
         "default",
         "Barang masuk disimpan",
         codeMessage
           ? `Data penerimaan dicatat. ${codeMessage}`
-          : "Data penerimaan berhasil dicatat."
+          : "Data penerimaan berhasil dicatat.",
       );
       fetchItems();
     } catch (err: unknown) {
@@ -986,7 +988,7 @@ export function InboundPage() {
                       <span
                         className={cn(
                           "shrink-0 rounded-full border px-2 py-0.5 text-xs",
-                          stockBadgeClass
+                          stockBadgeClass,
                         )}
                       >
                         Stok: {selectedItem?.stock ?? 0}
@@ -1009,8 +1011,8 @@ export function InboundPage() {
                         setHighlightIndex((idx) =>
                           Math.min(
                             idx + 1,
-                            Math.max(visibleItems.length - 1, 0)
-                          )
+                            Math.max(visibleItems.length - 1, 0),
+                          ),
                         );
                         return;
                       }
@@ -1093,7 +1095,7 @@ export function InboundPage() {
               min={1}
               value={lineItem.qty}
               onChange={(e) =>
-                setLineItem((l) => ({ ...l, qty: Number(e.target.value) }))
+                setLineItem((l) => ({ ...l, qty: e.target.value }))
               }
             />
             <Button onClick={addLine}>
@@ -1210,7 +1212,7 @@ function ToastRegion({ toasts }: { toasts: Toast[] }) {
             "pointer-events-auto shadow-lg",
             toast.variant === "destructive"
               ? "border-red-200 bg-red-50 text-red-900"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
           )}
         >
           <AlertTitle>{toast.title}</AlertTitle>

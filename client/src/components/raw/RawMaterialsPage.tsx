@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,9 +139,7 @@ export function RawMaterialsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(RAW_URL);
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as typeof rows;
+      const data = await httpJson<typeof rows>(RAW_URL);
       setRows(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Gagal memuat";
@@ -274,12 +273,11 @@ export function RawMaterialsPage() {
       const targetUrl = editing
         ? `${RAW_URL}/${encodeURIComponent(editing.code)}`
         : RAW_URL;
-      const res = await fetch(targetUrl, {
+      await httpJson(targetUrl, {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
       await load();
       setShowForm(false);
     } catch (err) {
@@ -293,10 +291,9 @@ export function RawMaterialsPage() {
   async function deleteItem(code: string) {
     setDeleting(true);
     try {
-      const res = await fetch(`${RAW_URL}/${encodeURIComponent(code)}`, {
+      await httpJson(`${RAW_URL}/${encodeURIComponent(code)}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error(await res.text());
       await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Gagal menghapus.";

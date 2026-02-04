@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,6 +99,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     category: "",
     stock: 0,
   });
+  const [manualCode, setManualCode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<
     "all" | "aman" | "menipis" | "kritis"
@@ -118,34 +120,30 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setLoading(true);
     setError(null);
     try {
-      const [itemsRes, rawRes, productsRes] = await Promise.all([
-        fetch(ITEMS_URL),
-        fetch(RAW_URL),
-        fetch(PRODUCTS_URL),
+      const [itemsData, rawData, productsData] = await Promise.all([
+        httpJson<RemoteItem[]>(ITEMS_URL),
+        httpJson<RemoteItem[]>(RAW_URL),
+        httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
-
-      if (!itemsRes.ok) throw new Error(await itemsRes.text());
-      if (!rawRes.ok) throw new Error(await rawRes.text());
-      if (!productsRes.ok) throw new Error(await productsRes.text());
-
-      const [itemsData, rawData, productsData] = (await Promise.all([
-        itemsRes.json(),
-        rawRes.json(),
-        productsRes.json(),
-      ])) as [RemoteItem[], RemoteItem[], RemoteItem[]];
 
       const remoteMerged = [
         ...itemsData,
-        ...rawData.filter((raw) => !itemsData.some((it) => it.code === raw.code)),
+        ...rawData.filter(
+          (raw) => !itemsData.some((it) => it.code === raw.code),
+        ),
         ...productsData
           .filter(
             (prod) =>
               !itemsData.some((it) => it.code === prod.code) &&
-              !rawData.some((raw) => raw.code === prod.code)
+              !rawData.some((raw) => raw.code === prod.code),
           )
           .map((prod) => {
             // Normalisasi kategori DRUMBAND/HTS/SEMI menjadi Produk
-            if (prod.category === "DRUMBAND" || prod.category === "HTS" || prod.category === "SEMI") {
+            if (
+              prod.category === "DRUMBAND" ||
+              prod.category === "HTS" ||
+              prod.category === "SEMI"
+            ) {
               return {
                 ...prod,
                 subCategory: prod.category,
@@ -156,7 +154,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           }),
       ];
       const staticMap = new Map(
-        inventoryItemsWithKind.map((base) => [base.code, base])
+        inventoryItemsWithKind.map((base) => [base.code, base]),
       );
       const fromApi = remoteMerged.map((it) => {
         const base = staticMap.get(it.code);
@@ -191,7 +189,10 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    items.forEach((item) => set.add(item.category));
+    items.forEach((item) => {
+      const cat = (item.category || "").trim();
+      if (cat) set.add(cat);
+    });
     return Array.from(set).sort();
   }, [items]);
 
@@ -294,6 +295,76 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     return Array.from(holes).sort((a, b) => Number(a) - Number(b));
   }, [items]);
 
+  const escapeRegExp = useCallback((value: string) => {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }, []);
+
+  const normalizeCategory = useCallback((value: string) => {
+    return (value || "").trim().toUpperCase();
+  }, []);
+
+  const pickPrefix = useCallback((category: string, fallbackName?: string) => {
+    const text = (category || fallbackName || "").toUpperCase();
+    if (text.includes("RING")) return "RING";
+    if (text.includes("LUG")) return "LUG";
+    if (text.includes("HAR")) return "HAR";
+    if (text.includes("HEAD")) return "HEAD";
+    if (text.includes("BODY")) return "BODY";
+    if (text.includes("FIN")) return "FIN";
+    if (text.includes("PIPE")) return "PIPE";
+    if (text.includes("ACC")) return "ACC";
+    if (text.includes("SPARE")) return "SPAREPART";
+    if (text.includes("BRACKET")) return "BRACKET";
+    if (text.includes("STRAINER")) return "STRAINER";
+    if (text.includes("STAND")) return "STAND";
+    if (text.includes("BELL")) return "BELL";
+    if (text.includes("MAHKOTA")) return "MAHKOTA";
+    if (text.includes("HOLDER")) return "HOLDER";
+    if (text.includes("RIM")) return "RIM";
+    const first = text.split(/\s+/)[0] ?? "";
+    return first.slice(0, 8) || "ITEM";
+  }, []);
+
+  const normalizeToken = (token: string) => token.replace(/[^A-Z0-9]/g, "");
+
+  const buildCodeBase = useCallback(
+    (name: string, category: string) => {
+      const words = name
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter(Boolean);
+      if (!words.length) return "";
+      const prefix = pickPrefix(category, name);
+      const body = words.slice(0, 3).map((w) => normalizeToken(w).slice(0, 6));
+      return [prefix, ...body].filter(Boolean).join("-");
+    },
+    [pickPrefix],
+  );
+
+  const suggestCode = useCallback(
+    (name: string, category: string) => {
+      const base = buildCodeBase(name, category);
+      if (!base) return "";
+      const baseUpper = base.toUpperCase();
+      const catNorm = normalizeCategory(category);
+      const existing = items
+        .filter((it) => normalizeCategory(it.category) === catNorm)
+        .map((it) => it.code.toUpperCase());
+      if (!existing.includes(baseUpper)) return baseUpper;
+      const re = new RegExp(`^${escapeRegExp(baseUpper)}-(\\d+)$`);
+      let max = 0;
+      existing.forEach((code) => {
+        const match = code.match(re);
+        if (match) {
+          const num = Number(match[1]);
+          if (Number.isFinite(num)) max = Math.max(max, num);
+        }
+      });
+      return `${baseUpper}-${String(max + 1).padStart(2, "0")}`;
+    },
+    [buildCodeBase, escapeRegExp, items, normalizeCategory],
+  );
+
   const paged = useMemo(() => {
     const start = (currentPage - 1) * perPage;
     return filtered.slice(start, start + perPage);
@@ -303,6 +374,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     if (readOnly) return;
     setEditing(null);
     setForm({ code: "", name: "", category: "", stock: 0 });
+    setManualCode(false);
     setFormError(null);
     setShowForm(true);
   }
@@ -316,6 +388,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       category: item.category,
       stock: item.stock,
     });
+    setManualCode(true);
     setFormError(null);
     setShowForm(true);
   }
@@ -342,7 +415,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
     if (!editing && items.some((it) => it.code === payload.code)) {
       setFormError(
-        "Kode sudah ada. Gunakan kode lain atau edit item tersebut."
+        "Kode sudah ada. Gunakan kode lain atau edit item tersebut.",
       );
       return;
     }
@@ -350,54 +423,14 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setSaving(true);
     setFormError(null);
     try {
-      const code = encodeURIComponent(payload.code);
-      
-      if (editing) {
-        // For editing, try all three endpoints to find which table has the item
-        const endpoints = [
-          { url: `${ITEMS_URL}/${code}`, label: "Item" },
-          { url: `${RAW_URL}/${code}`, label: "Raw Material" },
-          { url: `${PRODUCTS_URL}/${code}`, label: "Product" },
-        ];
-        
-        let success = false;
-        const errorDetails: string[] = [];
-        for (const endpoint of endpoints) {
-          const isRaw = endpoint.url.includes("/api/raw-materials/");
-          const bodyPayload = isRaw
-            // Raw materials PATCH schema forbids extra props; exclude `code`
-            ? { name: payload.name, category: payload.category, subCategory: payload.subCategory, kind: payload.kind, stock: payload.stock }
-            : payload;
-          const res = await fetch(endpoint.url, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(bodyPayload),
-          });
-          if (res.ok) {
-            success = true;
-            break;
-          } else {
-            try {
-              const msg = await res.text();
-              errorDetails.push(`[${endpoint.label}] ${res.status}: ${msg || "Request failed"}`);
-            } catch {
-              errorDetails.push(`[${endpoint.label}] ${res.status}: Request failed`);
-            }
-          }
-        }
-        if (!success) {
-          throw new Error(errorDetails.join(" | ") || "Item tidak ditemukan di database");
-        }
-      } else {
-        // For creating, use items endpoint by default
-        const res = await fetch(ITEMS_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(await res.text());
-      }
-      
+      const targetUrl = editing
+        ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
+        : ITEMS_URL;
+      await httpJson(targetUrl, {
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       await fetchItems();
       setShowForm(false);
     } catch (err: unknown) {
@@ -414,36 +447,9 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setDeleting(true);
     setError(null);
     try {
-      const encodedCode = encodeURIComponent(code);
-      
-      // Try all three endpoints to find which table has the item
-      const endpoints = [
-        { url: `${ITEMS_URL}/${encodedCode}`, label: "Item" },
-        { url: `${RAW_URL}/${encodedCode}`, label: "Raw Material" },
-        { url: `${PRODUCTS_URL}/${encodedCode}`, label: "Product" },
-      ];
-
-      let success = false;
-      const errorDetails: string[] = [];
-      for (const endpoint of endpoints) {
-        const res = await fetch(endpoint.url, { method: "DELETE" });
-        if (res.ok) {
-          success = true;
-          break;
-        } else {
-          try {
-            const msg = await res.text();
-            errorDetails.push(`[${endpoint.label}] ${res.status}: ${msg || "Request failed"}`);
-          } catch {
-            errorDetails.push(`[${endpoint.label}] ${res.status}: Request failed`);
-          }
-        }
-      }
-
-      if (!success) {
-        throw new Error(errorDetails.join(" | ") || "Item tidak ditemukan di database");
-      }
-      
+      await httpJson(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
+        method: "DELETE",
+      });
       await fetchItems();
     } catch (err: unknown) {
       const message =
@@ -482,6 +488,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setShowForm(false);
   }
 
+  const columnCount = readOnly ? 5 : 6;
+
   return (
     <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
       <div className="space-y-6">
@@ -504,7 +512,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 <Download className="h-4 w-4" />
                 Export Excel
               </Button>
-              {!readOnly ? (
+              {!readOnly && (
                 <Button
                   className="bg-sky-600 text-white hover:bg-sky-700"
                   onClick={openAddForm}
@@ -512,7 +520,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   <Plus className="h-4 w-4" />
                   Tambah Barang
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
           <p className="text-sm text-slate-600">
@@ -677,8 +685,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   {ringSubCategory === "all"
                     ? "Model"
                     : ringSubCategory === "SNARE"
-                    ? "Snare"
-                    : "Tom"}
+                      ? "Snare"
+                      : "Tom"}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -791,9 +799,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   className="h-9 px-3"
                 >
                   <Package className="mr-2 h-4 w-4" />
-                  {productSubCategory === "all"
-                    ? "Jenis"
-                    : productSubCategory}
+                  {productSubCategory === "all" ? "Jenis" : productSubCategory}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-40">
@@ -802,13 +808,17 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 <DropdownMenuItem onSelect={() => setProductSubCategory("all")}>
                   Semua
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("DRUMBAND")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("DRUMBAND")}
+                >
                   DRUMBAND
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setProductSubCategory("HTS")}>
                   HTS
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setProductSubCategory("SEMI")}>
+                <DropdownMenuItem
+                  onSelect={() => setProductSubCategory("SEMI")}
+                >
                   SEMI
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -826,14 +836,14 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   <TableHead>Nama Barang</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Stok</TableHead>
-                  {!readOnly ? <TableHead>Aksi</TableHead> : null}
+                  {!readOnly && <TableHead>Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={readOnly ? 5 : 6}
+                      colSpan={columnCount}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Memuat data...
@@ -851,7 +861,11 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                         rowNumber={rowNumber}
                         readOnly={readOnly}
                         onEdit={() => openEditForm(item)}
-                        onDelete={() => setPendingDelete(item)}
+                        onDelete={() => {
+                          if (readOnly) return;
+                          setPendingDelete(item);
+                        }}
+                        readOnly={readOnly}
                       />
                     );
                   })
@@ -859,7 +873,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 {!loading && filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={readOnly ? 5 : 6}
+                      colSpan={columnCount}
                       className="py-6 text-center text-sm text-slate-500"
                     >
                       Tidak ada barang yang cocok.
@@ -905,39 +919,37 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
         </Pager>
       </div>
 
-      {!readOnly ? (
-        <AlertDialog
-          open={!!pendingDelete}
-          onOpenChange={(open) => {
-            if (!open) setPendingDelete(null);
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Hapus barang ini?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Barang{" "}
-                <span className="font-semibold text-slate-900">
-                  {pendingDelete?.name}
-                </span>{" "}
-                akan dihapus dari daftar.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setPendingDelete(null)}>
-                Batal
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-red-600 text-white hover:bg-red-700"
-                onClick={confirmDelete}
-                disabled={deleting}
-              >
-                {deleting ? "Menghapus..." : "Hapus"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      ) : null}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus barang ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Barang{" "}
+              <span className="font-semibold text-slate-900">
+                {pendingDelete?.name}
+              </span>{" "}
+              akan dihapus dari daftar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingDelete(null)}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={confirmDelete}
+              disabled={deleting || readOnly}
+            >
+              {deleting ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showForm && !readOnly ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
@@ -967,9 +979,10 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 </label>
                 <Input
                   value={form.code}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, code: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setManualCode(true);
+                    setForm((f) => ({ ...f, code: e.target.value }));
+                  }}
                   placeholder="Kode unik"
                   className="h-11"
                   disabled={!!editing}
@@ -981,9 +994,17 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 </label>
                 <Input
                   value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => {
+                      const next = { ...f, name: value };
+                      if (!editing && !manualCode) {
+                        const auto = suggestCode(value, f.category);
+                        if (auto) next.code = auto;
+                      }
+                      return next;
+                    });
+                  }}
                   placeholder="Nama barang"
                   className="h-11"
                 />
@@ -994,12 +1015,26 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                 </label>
                 <Input
                   value={form.category}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, category: e.target.value }))
-                  }
-                  placeholder="Kategori"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => {
+                      const next = { ...f, category: value };
+                      if (!editing && !manualCode) {
+                        const auto = suggestCode(f.name, value);
+                        if (auto) next.code = auto;
+                      }
+                      return next;
+                    });
+                  }}
+                  list="category-options"
+                  placeholder="Pilih atau ketik kategori"
                   className="h-11"
                 />
+                <datalist id="category-options">
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
@@ -1071,11 +1106,11 @@ function Row({
       <TableCell className="font-semibold text-slate-900">
         {item.stock}
       </TableCell>
-      {!readOnly ? (
+      {!readOnly && (
         <TableCell>
           <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
         </TableCell>
-      ) : null}
+      )}
     </TableRow>
   );
 }
@@ -1198,7 +1233,7 @@ function getRingHoles(item: InventoryItemWithKind): string | null {
 
 function applySheetStyles(
   worksheet: XLSX.WorkSheet,
-  rows: Array<Array<string | number>>
+  rows: Array<Array<string | number>>,
 ) {
   const ref = worksheet["!ref"];
   if (!ref) return;

@@ -52,8 +52,10 @@ import {
   Box,
   Factory,
   PackageCheck,
+  Users as UsersIcon,
 } from "lucide-react";
 import { queryClient } from "./lib/react-query";
+import { UsersPage } from "./components/users/UsersPage";
 
 type View =
   | "dashboard"
@@ -63,22 +65,27 @@ type View =
   | "bahan-keluar"
   | "produksi"
   | "drafts"
-  | "riwayat";
+  | "riwayat"
+  | "users";
 
 function SidebarNav({
   active = "dashboard",
   onNavigate,
-  role,
+  userRole,
 }: {
   active?: AppNavKey;
   onNavigate?: (key: AppNavKey) => void;
-  role?: string;
+  userRole?: string;
 }) {
+  const isAdmin = userRole === "ADMIN";
+  const isViewer = userRole === "PELIHAT";
+
   const items: Array<{
     key: AppNavKey;
     label: string;
     icon: typeof LayoutDashboard;
     href: string;
+    adminOnly?: boolean;
   }> = [
     {
       key: "dashboard",
@@ -113,6 +120,13 @@ function SidebarNav({
     },
     { key: "drafts", label: "Draft", icon: ClipboardList, href: "#drafts" },
     { key: "riwayat", label: "Riwayat", icon: History, href: "#riwayat" },
+    {
+      key: "users",
+      label: "Pengguna",
+      icon: UsersIcon,
+      href: "#users",
+      adminOnly: true,
+    },
   ];
 
   const isViewer = role === "VIEWER";
@@ -125,11 +139,11 @@ function SidebarNav({
       <SidebarHeader>
         <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
           <div className="bg-linear-to-br from-slate-900 to-slate-700 text-white grid size-9 place-items-center rounded-lg font-semibold shadow-sm">
-            JD
+            IP
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-semibold leading-tight">
-              Jogja Drumband
+              Ias Productama
             </span>
             <span className="text-xs text-muted-foreground leading-tight">
               Warehouse Control
@@ -142,25 +156,35 @@ function SidebarNav({
           <SidebarGroupLabel>Menu utama</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {filteredItems.map((item) => (
-                <SidebarMenuItem key={item.key}>
-                  <SidebarMenuButton
-                    isActive={active === item.key}
-                    asChild
-                    onClick={(e) => {
-                      if (onNavigate) {
-                        e.preventDefault();
-                        onNavigate(item.key);
-                      }
-                    }}
-                  >
-                    <a href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {items
+                .filter((item) => {
+                  if (item.adminOnly && !isAdmin) return false;
+                  if (isViewer) {
+                    return ["dashboard", "inventory", "riwayat"].includes(
+                      item.key,
+                    );
+                  }
+                  return true;
+                })
+                .map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={active === item.key}
+                      asChild
+                      onClick={(e) => {
+                        if (onNavigate) {
+                          e.preventDefault();
+                          onNavigate(item.key);
+                        }
+                      }}
+                    >
+                      <a href={item.href} className="flex items-center gap-2">
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -204,7 +228,7 @@ function Shell({
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
-        <SidebarNav active={view} onNavigate={onNavigate} role={userRole} />
+        <SidebarNav active={view} onNavigate={onNavigate} userRole={userRole} />
         <SidebarInset className="flex-1">
           <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white/90 px-4 py-3 backdrop-blur md:px-6">
             <SidebarTrigger />
@@ -241,24 +265,24 @@ function Shell({
   );
 }
 
+function resolveViewFromHash(hash: string, role?: string): View {
+  const key = (hash || "#dashboard").replace(/^#/, "");
+  const allowed: Record<string, View> = {
+    dashboard: "dashboard",
+    inventory: "inventory",
+    masuk: role === "PELIHAT" ? "dashboard" : "masuk",
+    keluar: role === "PELIHAT" ? "dashboard" : "keluar",
+    "bahan-keluar": role === "PELIHAT" ? "dashboard" : "bahan-keluar",
+    produksi: role === "PELIHAT" ? "dashboard" : "produksi",
+    drafts: role === "PELIHAT" ? "dashboard" : "drafts",
+    riwayat: "riwayat",
+    users: role === "ADMIN" ? "users" : "dashboard",
+  };
+  return allowed[key] ?? "dashboard";
+}
+
 function App() {
-  const [view, setView] = useState<View>(() =>
-    window.location.hash === "#inventory"
-      ? "inventory"
-      : window.location.hash === "#masuk"
-        ? "masuk"
-        : window.location.hash === "#keluar"
-          ? "keluar"
-          : window.location.hash === "#bahan-keluar"
-            ? "bahan-keluar"
-          : window.location.hash === "#produksi"
-            ? "produksi"
-            : window.location.hash === "#drafts"
-              ? "drafts"
-              : window.location.hash === "#riwayat"
-                ? "riwayat"
-                : "dashboard"
-  );
+  const [view, setView] = useState<View>("dashboard");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -276,27 +300,6 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
-    const onHashChange = () => {
-      if (window.location.hash === "#inventory") {
-        setView("inventory");
-      } else if (window.location.hash === "#masuk") {
-        setView("masuk");
-      } else if (window.location.hash === "#keluar") {
-        setView("keluar");
-      } else if (window.location.hash === "#bahan-keluar") {
-        setView("bahan-keluar");
-      } else if (window.location.hash === "#produksi") {
-        setView("produksi");
-      } else if (window.location.hash === "#drafts") {
-        setView("drafts");
-      } else if (window.location.hash === "#riwayat") {
-        setView("riwayat");
-      } else {
-        setView("dashboard");
-      }
-    };
-    window.addEventListener("hashchange", onHashChange);
-
     (async () => {
       const current = await ensureSession();
       if (mounted && current) {
@@ -305,21 +308,19 @@ function App() {
       }
       if (mounted) setAuthLoading(false);
     })();
-
     return () => {
       mounted = false;
-      window.removeEventListener("hashchange", onHashChange);
     };
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    if (!isViewer) return;
-    if (!viewerAllowedViews.includes(view)) {
-      setView("inventory");
-      window.location.hash = "#inventory";
-    }
-  }, [isViewer, user, view]);
+    const applyHash = () => {
+      setView(resolveViewFromHash(window.location.hash, user?.role));
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, [user?.role]);
 
   const loginMutation = useMutation({
     mutationFn: () => login({ email, password }),
@@ -347,9 +348,25 @@ function App() {
   });
 
   const handleNavigate = (key: AppNavKey) => {
-    if (isViewer && key !== "inventory" && key !== "riwayat") {
-      setView("inventory");
-      window.location.hash = "#inventory";
+    const isViewer = user?.role === "PELIHAT";
+
+    if (key === "users" && user?.role !== "ADMIN") {
+      setView("dashboard");
+      window.location.hash = "#dashboard";
+      return;
+    }
+
+    const viewerBlocked: AppNavKey[] = [
+      "masuk",
+      "keluar",
+      "bahan-keluar",
+      "produksi",
+      "drafts",
+    ];
+
+    if (isViewer && viewerBlocked.includes(key)) {
+      setView("dashboard");
+      window.location.hash = "#dashboard";
       return;
     }
     const map: Record<AppNavKey, View> = {
@@ -361,6 +378,7 @@ function App() {
       produksi: "produksi",
       drafts: "drafts",
       riwayat: "riwayat",
+      users: "users",
     };
     const next = map[key] ?? "dashboard";
     setView(next);
@@ -382,7 +400,7 @@ function App() {
         <div className="flex min-h-screen w-full overflow-hidden border-y border-slate-200 shadow-xl shadow-sky-100 md:rounded-none md:border-x-0">
           <div className="hidden w-1/2 border-r border-slate-200 md:flex">
             <LoginHero
-              brand="Jogja Drumband"
+              brand="IasProductama"
               subtitle="Sistem ini bikin stok dan pergerakan alat drumband tertib. Peminjaman jadi tercatat rapi dan cepat."
               title="Rapi. Terpantau. Siap Dipakai."
               quote="Sistem ini bikin stok dan pergerakan alat drumband jauh lebih tertib. Peminjaman jadi tercatat rapi dan cepat."
@@ -418,7 +436,7 @@ function App() {
                 onSubmit={() => loginMutation.mutate()}
                 onForgotPassword={() =>
                   setErrorMessage(
-                    "Silakan hubungi admin untuk reset kata sandi sementara."
+                    "Silakan hubungi admin untuk reset kata sandi sementara.",
                   )
                 }
               />
@@ -445,6 +463,28 @@ function App() {
     );
   }
 
+  if (view === "users") {
+    return (
+      <Shell
+        title="Pengguna"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        {user?.role === "ADMIN" ? (
+          <UsersPage />
+        ) : (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses halaman pengguna khusus admin.
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
   if (view === "inventory") {
     return (
       <Shell
@@ -456,7 +496,7 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <InventoryPage readOnly={isViewer} />
+        <InventoryPage readOnly={user?.role === "PELIHAT"} />
       </Shell>
     );
   }
@@ -472,7 +512,13 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <OutboundPage />
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses transaksi barang keluar dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <OutboundPage />
+        )}
       </Shell>
     );
   }
@@ -488,7 +534,13 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <RawMaterialsOutboundTrackingPage />
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses transaksi bahan baku keluar dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <RawMaterialsOutboundTrackingPage />
+        )}
       </Shell>
     );
   }
@@ -504,7 +556,13 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <DraftsPage />
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses draft dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <DraftsPage />
+        )}
       </Shell>
     );
   }
@@ -536,7 +594,13 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <ProductionPage />
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses produksi dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <ProductionPage />
+        )}
       </Shell>
     );
   }
