@@ -859,7 +859,6 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                         item={item}
                         displayCode={displayCode}
                         rowNumber={rowNumber}
-                        readOnly={readOnly}
                         onEdit={() => openEditForm(item)}
                         onDelete={() => {
                           if (readOnly) return;
@@ -1271,4 +1270,4 @@ function applySheetStyles(
   if (cols && cols.length > 0) {
     worksheet["!cols"] = cols;
   }
- }
+}
