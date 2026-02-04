@@ -129,6 +129,11 @@ function SidebarNav({
     },
   ];
 
+  const isViewer = role === "VIEWER";
+  const filteredItems = isViewer
+    ? items.filter((item) => item.key === "inventory" || item.key === "riwayat")
+    : items;
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -289,6 +294,9 @@ function App() {
     queryFn: fetchMe,
     enabled: false,
   });
+
+  const isViewer = user?.role === "VIEWER";
+  const viewerAllowedViews: View[] = ["inventory", "riwayat"];
 
   useEffect(() => {
     let mounted = true;

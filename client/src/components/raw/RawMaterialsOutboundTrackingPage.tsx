@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { getAccessToken } from "@/lib/auth";
 import { httpJson, toUserMessage } from "@/lib/http";
 import {
   DropdownMenu,
@@ -410,9 +411,14 @@ export function RawMaterialsOutboundTrackingPage() {
           note: line.note || undefined,
         })),
       };
+      const token = getAccessToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
       await httpJson(OUTBOUND_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
       showNotice("default", "Bahan baku keluar berhasil disimpan.");
@@ -435,9 +441,14 @@ export function RawMaterialsOutboundTrackingPage() {
       return;
     }
     try {
+      const token = getAccessToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
       await httpJson(`${OUTBOUND_URL}/lines/${lineId}/receive`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ receivedBy: receiverName.trim() }),
       });
       showNotice("default", "Status diterima diperbarui.");
