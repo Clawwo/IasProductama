@@ -7,12 +7,16 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { RawMaterialsService } from './raw-materials.service.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
 import { CreateRawMaterialOutboundDto } from './dto/create-raw-material-outbound.dto.js';
 import { ReceiveRawMaterialOutboundLineDto } from './dto/receive-raw-material-outbound-line.dto.js';
 import { UpdateRawMaterialDto } from './dto/update-raw-material.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @Controller('raw-materials')
 export class RawMaterialsController {
@@ -32,16 +36,22 @@ export class RawMaterialsController {
   }
 
   @Post('outbound')
-  createOutbound(@Body() dto: CreateRawMaterialOutboundDto) {
-    return this.rawMaterialsService.createOutbound(dto);
+  @UseGuards(JwtAuthGuard)
+  createOutbound(
+    @Body() dto: CreateRawMaterialOutboundDto,
+    @Req() req: { user?: JwtPayload },
+  ) {
+    return this.rawMaterialsService.createOutbound(dto, req.user?.sub);
   }
 
   @Patch('outbound/lines/:id/receive')
+  @UseGuards(JwtAuthGuard)
   receiveOutboundLine(
     @Param('id') id: string,
     @Body() dto: ReceiveRawMaterialOutboundLineDto,
+    @Req() req: { user?: JwtPayload },
   ) {
-    return this.rawMaterialsService.receiveOutboundLine(id, dto);
+    return this.rawMaterialsService.receiveOutboundLine(id, dto, req.user?.sub);
   }
 
   @Get(':code')

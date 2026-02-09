@@ -9,11 +9,15 @@ import {
   Post,
   Put,
   Query,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import { DraftType } from '@prisma/client';
 import { DraftsService } from './drafts.service.js';
 import { CreateDraftDto } from './dto/create-draft.dto.js';
 import { UpdateDraftDto } from './dto/update-draft.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @Controller('drafts')
 export class DraftsController {
@@ -37,8 +41,9 @@ export class DraftsController {
   }
 
   @Post()
-  create(@Body() dto: CreateDraftDto) {
-    return this.draftsService.create(dto);
+  @UseGuards(JwtAuthGuard)
+  create(@Body() dto: CreateDraftDto, @Req() req: { user?: JwtPayload }) {
+    return this.draftsService.create(dto, req.user?.sub);
   }
 
   @Delete(':id')
@@ -47,7 +52,12 @@ export class DraftsController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateDraftDto) {
-    return this.draftsService.update(id, dto);
+  @UseGuards(JwtAuthGuard)
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDraftDto,
+    @Req() req: { user?: JwtPayload },
+  ) {
+    return this.draftsService.update(id, dto, req.user?.sub);
   }
 }

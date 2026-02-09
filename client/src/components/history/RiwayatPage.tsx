@@ -46,9 +46,12 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
 const INBOUND_URL = `${API_BASE}/api/inbound`;
 const OUTBOUND_URL = `${API_BASE}/api/outbound`;
 const RAW_OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
+const PRODUCTION_URL = `${API_BASE}/api/production`;
+const DRAFTS_URL = `${API_BASE}/api/drafts`;
 const ITEMS_URL = `${API_BASE}/api/items`;
 const RAW_ITEMS_URL = `${API_BASE}/api/raw-materials`;
 
+type UserRef = { id: string; name?: string | null; email?: string | null };
 type LineApi = { code: string; qty: number; note?: string; name?: string };
 type InboundApi = {
   id: string;
@@ -58,6 +61,7 @@ type InboundApi = {
   note?: string;
   lines: LineApi[];
   createdAt?: string;
+  createdBy?: UserRef | null;
 };
 type OutboundApi = {
   id: string;
@@ -67,6 +71,7 @@ type OutboundApi = {
   note?: string;
   lines: LineApi[];
   createdAt?: string;
+  createdBy?: UserRef | null;
 };
 
 type RawOutboundLineApi = {
@@ -87,6 +92,34 @@ type RawOutboundApi = {
   status: "OUT" | "RECEIVED";
   lines: RawOutboundLineApi[];
   createdAt?: string;
+  createdBy?: UserRef | null;
+};
+
+type ProductionLineApi = {
+  code: string;
+  qty: number;
+  note?: string;
+  name?: string;
+};
+
+type ProductionApi = {
+  id: string;
+  code: string;
+  date: string;
+  note?: string;
+  createdAt?: string;
+  rawLines: ProductionLineApi[];
+  finishedLines: ProductionLineApi[];
+  createdBy?: UserRef | null;
+};
+
+type DraftApi = {
+  id: string;
+  type: "INBOUND" | "OUTBOUND" | "PRODUCTION";
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: UserRef | null;
+  updatedBy?: UserRef | null;
 };
 
 type Movement = {
@@ -121,6 +154,12 @@ function formatDateTime(value: string) {
   });
 }
 
+const resolveActor = (user?: UserRef | null) => {
+  const name = user?.name?.trim();
+  const email = user?.email?.trim();
+  return name || email || undefined;
+};
+
 export function RiwayatPage() {
   const [items, setItems] = useState<Array<{ code: string; name?: string }>>(
     [],
@@ -131,6 +170,8 @@ export function RiwayatPage() {
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
   const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
+  const [production, setProduction] = useState<ProductionApi[]>([]);
+  const [drafts, setDrafts] = useState<DraftApi[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "Masuk" | "Keluar">(
@@ -198,20 +239,28 @@ export function RiwayatPage() {
     setLoading(true);
     setError(null);
     try {
-      const [inRes, outRes, rawOutRes] = await Promise.all([
+      const [inRes, outRes, rawOutRes, prodRes, draftRes] = await Promise.all([
         fetch(`${INBOUND_URL}?limit=200`),
         fetch(`${OUTBOUND_URL}?limit=200`),
         fetch(`${RAW_OUTBOUND_URL}?limit=200`),
+        fetch(`${PRODUCTION_URL}?limit=200`),
+        fetch(`${DRAFTS_URL}?limit=200`),
       ]);
       if (!inRes.ok) throw new Error(await inRes.text());
       if (!outRes.ok) throw new Error(await outRes.text());
       if (!rawOutRes.ok) throw new Error(await rawOutRes.text());
+      if (!prodRes.ok) throw new Error(await prodRes.text());
+      if (!draftRes.ok) throw new Error(await draftRes.text());
       const inboundData = (await inRes.json()) as InboundApi[];
       const outboundData = (await outRes.json()) as OutboundApi[];
       const rawOutboundData = (await rawOutRes.json()) as RawOutboundApi[];
+      const productionData = (await prodRes.json()) as ProductionApi[];
+      const draftData = (await draftRes.json()) as DraftApi[];
       setInbound(inboundData);
       setOutbound(outboundData);
       setRawOutbound(rawOutboundData);
+      setProduction(productionData);
+      setDrafts(draftData);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal memuat riwayat.";
@@ -232,7 +281,6 @@ export function RiwayatPage() {
     const mapLines = (
       rows: Array<InboundApi | OutboundApi>,
       direction: Movement["direction"],
-      actorKey: "vendor" | "orderer",
     ): Movement[] =>
       rows.flatMap((rec) => {
         const sourceDate = rec.createdAt ?? rec.date ?? "";
@@ -246,7 +294,7 @@ export function RiwayatPage() {
           itemCode: line.code,
           name: line.name ?? nameMap.get(line.code) ?? line.code,
           qty: line.qty,
-          actor: (rec as never)[actorKey] as string | undefined,
+          actor: resolveActor(rec.createdBy),
           time: formatDateTime(sourceDate),
           rawTime: sourceDate,
           timestamp: Date.parse(sourceDate) || 0,
@@ -273,7 +321,7 @@ export function RiwayatPage() {
               itemCode: code,
               name,
               qty: line.qty,
-              actor: rec.artisan,
+              actor: resolveActor(rec.createdBy),
               time: formatDateTime(sourceDate),
               rawTime: sourceDate,
               timestamp: Date.parse(sourceDate) || 0,
@@ -283,14 +331,56 @@ export function RiwayatPage() {
           });
       });
 
+    const productionLines = production.flatMap((rec) => {
+      const sourceDate = rec.createdAt ?? rec.date ?? "";
+      const actor = resolveActor(rec.createdBy);
+
+      const raw = rec.rawLines.map((line, idx) => ({
+        id: `Produksi-raw-${rec.id}-${idx}-${line.code}`,
+        direction: "Keluar" as const,
+        kind: "Bahan" as const,
+        category: "Produksi" as const,
+        txCode: rec.code ?? "-",
+        recordId: rec.id,
+        itemCode: line.code,
+        name: line.name ?? nameMap.get(line.code) ?? line.code,
+        qty: line.qty,
+        actor,
+        time: formatDateTime(sourceDate),
+        rawTime: sourceDate,
+        timestamp: Date.parse(sourceDate) || 0,
+        note: line.note ?? rec.note ?? undefined,
+      }));
+
+      const finished = rec.finishedLines.map((line, idx) => ({
+        id: `Produksi-finished-${rec.id}-${idx}-${line.code}`,
+        direction: "Masuk" as const,
+        kind: "Barang" as const,
+        category: "Produksi" as const,
+        txCode: rec.code ?? "-",
+        recordId: rec.id,
+        itemCode: line.code,
+        name: line.name ?? nameMap.get(line.code) ?? line.code,
+        qty: line.qty,
+        actor,
+        time: formatDateTime(sourceDate),
+        rawTime: sourceDate,
+        timestamp: Date.parse(sourceDate) || 0,
+        note: line.note ?? rec.note ?? undefined,
+      }));
+
+      return [...raw, ...finished];
+    });
+
     const combined = [
-      ...mapLines(inbound, "Masuk", "vendor"),
-      ...mapLines(outbound, "Keluar", "orderer"),
+      ...mapLines(inbound, "Masuk"),
+      ...mapLines(outbound, "Keluar"),
       ...rawLines,
+      ...productionLines,
     ];
 
     return combined.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inbound, outbound, rawOutbound, items, rawItems]);
+  }, [inbound, outbound, rawOutbound, production, items, rawItems]);
 
   const stats = useMemo(() => {
     const total = movements.length;
@@ -312,6 +402,21 @@ export function RiwayatPage() {
       outboundRawQty,
     };
   }, [movements]);
+
+  const draftActivities = useMemo(() => {
+    return drafts
+      .map((draft) => {
+        const rawTime = draft.updatedAt ?? draft.createdAt ?? "";
+        return {
+          id: draft.id,
+          time: formatDateTime(rawTime),
+          rawTime,
+          timestamp: Date.parse(rawTime) || 0,
+          actor: resolveActor(draft.updatedBy ?? draft.createdBy),
+        };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [drafts]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -355,7 +460,7 @@ export function RiwayatPage() {
       "Nama Barang",
       "Jumlah",
       "Satuan",
-      "Pihak",
+      "Akun",
       "Tipe",
       "Batch",
       "Keterangan",
@@ -396,6 +501,52 @@ export function RiwayatPage() {
   };
 
   const openDetail = (row: Movement) => {
+    if (row.category === "Produksi") {
+      const match =
+        production.find((rec) => rec.code === row.txCode) ??
+        production.find((rec) => rec.id === row.recordId);
+
+      const rawLines = (match?.rawLines ?? []).map((line) => ({
+        code: line.code,
+        name: line.name ? `Bahan: ${line.name}` : `Bahan: ${line.code}`,
+        qty: Math.abs(line.qty),
+        note: line.note ?? match?.note,
+      }));
+
+      const finishedLines = (match?.finishedLines ?? []).map((line) => ({
+        code: line.code,
+        name: line.name
+          ? `Barang jadi: ${line.name}`
+          : `Barang jadi: ${line.code}`,
+        qty: Math.abs(line.qty),
+        note: line.note ?? match?.note,
+      }));
+
+      const lines =
+        rawLines.length + finishedLines.length > 0
+          ? [...rawLines, ...finishedLines]
+          : [
+              {
+                code: row.itemCode,
+                name: row.name,
+                qty: Math.abs(row.qty),
+                note: row.note,
+              },
+            ];
+
+      setDetailData({
+        txCode: match?.code ?? row.txCode,
+        direction: row.direction,
+        kind: row.kind,
+        actor: resolveActor(match?.createdBy) ?? row.actor,
+        date: formatDateTime(match?.date ?? row.rawTime),
+        note: match?.note ?? row.note,
+        lines,
+      });
+      setDetailOpen(true);
+      return;
+    }
+
     if (row.direction === "Masuk") {
       const match =
         inbound.find((rec) => rec.code === row.txCode) ??
@@ -412,7 +563,7 @@ export function RiwayatPage() {
         txCode: match?.code ?? row.txCode,
         direction: row.direction,
         kind: "Barang",
-        actor: match?.vendor,
+        actor: resolveActor(match?.createdBy) ?? row.actor,
         date: formatDateTime(match?.date ?? row.rawTime),
         note: match?.note ?? row.note,
         lines,
@@ -446,7 +597,7 @@ export function RiwayatPage() {
         txCode: match?.code ?? row.txCode,
         direction: row.direction,
         kind: row.kind,
-        actor: row.actor ?? match?.artisan,
+        actor: resolveActor(match?.createdBy) ?? row.actor,
         date: formatDateTime(match?.date ?? row.rawTime),
         note: match?.note ?? row.note,
         lines,
@@ -470,7 +621,7 @@ export function RiwayatPage() {
       txCode: match?.code ?? row.txCode,
       direction: row.direction,
       kind: row.kind,
-      actor: row.actor ?? match?.orderer,
+      actor: resolveActor(match?.createdBy) ?? row.actor,
       date: formatDateTime(match?.date ?? row.rawTime),
       note: match?.note ?? row.note,
       lines,
@@ -603,7 +754,7 @@ export function RiwayatPage() {
             <Search className="size-4 text-muted-foreground" />
             <Input
               className="border-0 shadow-none focus-visible:ring-0"
-              placeholder="Cari kode transaksi, barang, vendor, atau catatan"
+              placeholder="Cari kode transaksi, barang, akun, atau catatan"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -671,7 +822,7 @@ export function RiwayatPage() {
                   Qty
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
-                  Pihak
+                  Akun
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800 text-center">
                   Detail
@@ -682,7 +833,7 @@ export function RiwayatPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat riwayat...
@@ -691,7 +842,7 @@ export function RiwayatPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -700,7 +851,7 @@ export function RiwayatPage() {
               ) : pageRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data. Ubah filter atau catat transaksi baru.
@@ -808,6 +959,44 @@ export function RiwayatPage() {
         </Pager>
       </div>
 
+      <div className="rounded-2xl border bg-white shadow-sm">
+        <div className="flex items-center justify-between p-4">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Riwayat perubahan draft
+            </p>
+            <h2 className="text-lg font-semibold">Draft</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {draftActivities.length} aktivitas
+          </p>
+        </div>
+        <Separator />
+        {draftActivities.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            Belum ada aktivitas draft.
+          </div>
+        ) : (
+          <div className="max-h-64 overflow-y-auto divide-y">
+            {draftActivities.map((activity) => (
+              <div
+                key={activity.id}
+                className="flex items-center justify-between px-4 py-3 text-sm"
+              >
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {activity.actor ?? "-"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {activity.time}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
@@ -847,11 +1036,7 @@ export function RiwayatPage() {
             <div className="px-4 pb-6 space-y-4">
               <div className="rounded-lg border p-3 text-sm">
                 <p className="text-muted-foreground">
-                  {detailData.kind === "Bahan"
-                    ? "Pengrajin"
-                    : detailData.direction === "Masuk"
-                      ? "Vendor"
-                      : "Pemesan"}
+                  Akun
                 </p>
                 <p className="font-medium">{detailData.actor ?? "-"}</p>
               </div>

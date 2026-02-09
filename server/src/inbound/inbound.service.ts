@@ -25,11 +25,14 @@ export class InboundService {
     return this.prisma.inbound.findMany({
       take,
       orderBy: { date: 'desc' },
-      include: { lines: true },
+      include: {
+        lines: true,
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
     });
   }
 
-  async create(dto: CreateInboundDto) {
+  async create(dto: CreateInboundDto, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const date = new Date(dto.date);
       const dayStart = startOfDay(date);
@@ -47,6 +50,7 @@ export class InboundService {
           vendor: dto.vendor,
           date,
           note: dto.note,
+          createdById: userId ?? undefined,
           lines: {
             create: dto.lines.map((l) => ({
               code: l.code,

@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { OutboundService } from './outbound.service.js';
 import { CreateOutboundDto } from './dto/create-outbound.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @Controller('outbound')
 export class OutboundController {
@@ -15,7 +17,8 @@ export class OutboundController {
   }
 
   @Post()
-  create(@Body() dto: CreateOutboundDto) {
-    return this.outboundService.create(dto);
+  @UseGuards(JwtAuthGuard)
+  create(@Body() dto: CreateOutboundDto, @Req() req: { user?: JwtPayload }) {
+    return this.outboundService.create(dto, req.user?.sub);
   }
 }

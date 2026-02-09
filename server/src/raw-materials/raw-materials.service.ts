@@ -80,11 +80,14 @@ export class RawMaterialsService {
     return this.prisma.rawMaterialOutbound.findMany({
       take,
       orderBy: { date: 'desc' },
-      include: { lines: { orderBy: { createdAt: 'asc' } } },
+      include: {
+        lines: { orderBy: { createdAt: 'asc' } },
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
     });
   }
 
-  async createOutbound(dto: CreateRawMaterialOutboundDto) {
+  async createOutbound(dto: CreateRawMaterialOutboundDto, userId?: string) {
     return this.prisma.$transaction(async (tx) => {
       const date = new Date(dto.date);
       const dayStart = startOfDay(date);
@@ -129,6 +132,7 @@ export class RawMaterialsService {
           artisan: dto.artisan,
           date,
           note: dto.note,
+          createdById: userId ?? undefined,
           lines: {
             create: dto.lines.map((line) => ({
               materialCode: line.code,
@@ -150,6 +154,7 @@ export class RawMaterialsService {
   async receiveOutboundLine(
     lineId: string,
     dto: ReceiveRawMaterialOutboundLineDto,
+    userId?: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const line = await tx.rawMaterialOutboundLine.findUnique({
@@ -171,7 +176,7 @@ export class RawMaterialsService {
         data: {
           status: 'RECEIVED',
           receivedAt,
-          receivedBy: dto.receivedBy,
+          receivedBy: dto.receivedBy ?? userId ?? undefined,
         },
       });
 
