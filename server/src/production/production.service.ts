@@ -27,11 +27,15 @@ export class ProductionService {
     return await prisma.production.findMany({
       take,
       orderBy: { date: 'desc' },
-      include: { rawLines: true, finishedLines: true },
+      include: {
+        rawLines: true,
+        finishedLines: true,
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
     });
   }
 
-  async create(dto: CreateProductionDto) {
+  async create(dto: CreateProductionDto, userId?: string) {
     const prisma = this.prisma as unknown as PrismaClient;
     return prisma.$transaction(async (tx) => {
       const date = new Date(dto.date);
@@ -174,6 +178,7 @@ export class ProductionService {
           code,
           date,
           note: dto.note,
+          createdById: userId ?? undefined,
           rawLines: {
             create: dto.rawLines.map((l) => ({
               code: l.code,

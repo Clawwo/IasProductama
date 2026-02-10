@@ -5,6 +5,8 @@ import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { OutboundService } from './outbound.service.js';
 import { CreateOutboundDto } from './dto/create-outbound.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('outbound')
@@ -22,7 +24,8 @@ export class OutboundController {
 
   @Roles(Role.ADMIN, Role.PETUGAS)
   @Post()
-  create(@Body() dto: CreateOutboundDto) {
-    return this.outboundService.create(dto);
+  @UseGuards(JwtAuthGuard)
+  create(@Body() dto: CreateOutboundDto, @Req() req: { user?: JwtPayload }) {
+    return this.outboundService.create(dto, req.user?.sub);
   }
 }

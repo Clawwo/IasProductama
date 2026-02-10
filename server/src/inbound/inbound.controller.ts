@@ -5,6 +5,8 @@ import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { InboundService } from './inbound.service.js';
 import { CreateInboundDto } from './dto/create-inbound.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('inbound')
@@ -22,7 +24,8 @@ export class InboundController {
 
   @Roles(Role.ADMIN, Role.PETUGAS)
   @Post()
-  create(@Body() dto: CreateInboundDto) {
-    return this.inboundService.create(dto);
+  @UseGuards(JwtAuthGuard)
+  create(@Body() dto: CreateInboundDto, @Req() req: { user?: JwtPayload }) {
+    return this.inboundService.create(dto, req.user?.sub);
   }
 }

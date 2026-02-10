@@ -156,20 +156,28 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       const staticMap = new Map(
         inventoryItemsWithKind.map((base) => [base.code, base]),
       );
-      const fromApi = remoteMerged.map((it) => {
-        const base = staticMap.get(it.code);
+      const remoteMap = new Map(remoteMerged.map((it) => [it.code, it]));
+      const combinedCodes = new Set<string>([
+        ...staticMap.keys(),
+        ...remoteMap.keys(),
+      ]);
+
+      const fromApi = Array.from(combinedCodes).map((code) => {
+        const base = staticMap.get(code);
+        const it = remoteMap.get(code);
         const merged = {
           ...base,
           ...it,
-          name: it.name ?? base?.name ?? "",
-          category: it.category ?? base?.category ?? "",
-          subCategory: it.subCategory ?? base?.subCategory,
-          stock: it.stock ?? base?.stock ?? 0,
+          code,
+          name: it?.name ?? base?.name ?? "",
+          category: it?.category ?? base?.category ?? "",
+          subCategory: it?.subCategory ?? base?.subCategory,
+          stock: it?.stock ?? base?.stock ?? 0,
         } as InventoryItemWithKind;
         return {
           ...merged,
           kind:
-            (it.kind as InventoryItemWithKind["kind"] | undefined) ??
+            (it?.kind as InventoryItemWithKind["kind"] | undefined) ??
             base?.kind ??
             inferKind(merged),
         };

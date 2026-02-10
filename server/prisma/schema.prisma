@@ -17,6 +17,12 @@ model User {
   updatedAt DateTime @updatedAt
 
   sessions  Session[]
+  inboundCreated      Inbound[]              @relation("InboundCreatedBy")
+  outboundCreated     Outbound[]             @relation("OutboundCreatedBy")
+  productionCreated   Production[]           @relation("ProductionCreatedBy")
+  draftCreated        Draft[]                @relation("DraftCreatedBy")
+  draftUpdated        Draft[]                @relation("DraftUpdatedBy")
+  rawOutboundCreated  RawMaterialOutbound[]  @relation("RawOutboundCreatedBy")
 }
 
 model Session {
@@ -41,7 +47,11 @@ model Inbound {
   note      String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+  createdById String?
+  createdBy   User?        @relation("InboundCreatedBy", fields: [createdById], references: [id])
   lines     InboundLine[]
+
+  @@index([createdById])
 }
 
 model InboundLine {
@@ -63,7 +73,11 @@ model Outbound {
   note      String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+  createdById String?
+  createdBy   User?         @relation("OutboundCreatedBy", fields: [createdById], references: [id])
   lines     OutboundLine[]
+
+  @@index([createdById])
 }
 
 model OutboundLine {
@@ -130,8 +144,12 @@ model Production {
   note           String?
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
+  createdById    String?
+  createdBy      User?                   @relation("ProductionCreatedBy", fields: [createdById], references: [id])
   rawLines       ProductionRawLine[]
   finishedLines  ProductionFinishedLine[]
+
+  @@index([createdById])
 }
 
 model ProductionRawLine {
@@ -183,6 +201,13 @@ model Draft {
   payload   Json
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+  createdById String?
+  createdBy   User?   @relation("DraftCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?   @relation("DraftUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([createdById])
+  @@index([updatedById])
 }
 
 model RawMaterialOutbound {
@@ -195,7 +220,11 @@ model RawMaterialOutbound {
   receivedAt DateTime?
   createdAt  DateTime                   @default(now())
   updatedAt  DateTime                   @updatedAt
+  createdById String?
+  createdBy   User?                      @relation("RawOutboundCreatedBy", fields: [createdById], references: [id])
   lines      RawMaterialOutboundLine[]
+
+  @@index([createdById])
 }
 
 model RawMaterialOutboundLine {

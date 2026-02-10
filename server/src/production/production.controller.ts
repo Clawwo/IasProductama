@@ -5,6 +5,8 @@ import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { ProductionService } from './production.service.js';
 import { CreateProductionDto } from './dto/create-production.dto.js';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
+import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('production')
@@ -22,7 +24,8 @@ export class ProductionController {
 
   @Roles(Role.ADMIN, Role.PETUGAS)
   @Post()
-  create(@Body() dto: CreateProductionDto) {
-    return this.productionService.create(dto);
+  @UseGuards(JwtAuthGuard)
+  create(@Body() dto: CreateProductionDto, @Req() req: { user?: JwtPayload }) {
+    return this.productionService.create(dto, req.user?.sub);
   }
 }
