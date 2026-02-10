@@ -41,9 +41,8 @@ export class BomService {
 
     if (bom) return bom;
 
-    const tokens = name && tokenize(name).length
-      ? tokenize(name)
-      : tokenize(code);
+    const tokens =
+      name && tokenize(name).length ? tokenize(name) : tokenize(code);
 
     if (!tokens.length) throw new NotFoundException('BOM tidak ditemukan');
 
@@ -51,9 +50,11 @@ export class BomService {
       include: { lines: { orderBy: { name: 'asc' } } },
     });
 
-    let best:
-      | { score: number; extra: number; entry: (typeof allBoms)[number] }
-      | null = null;
+    let best: {
+      score: number;
+      extra: number;
+      entry: (typeof allBoms)[number];
+    } | null = null;
 
     for (const entry of allBoms) {
       const entryTokens = new Set([

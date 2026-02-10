@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { httpJson } from "@/lib/http";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -141,12 +142,7 @@ export function DraftsPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(DRAFTS_URL);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal memuat draft");
-      }
-      const data = (await res.json()) as DraftRecord[];
+      const data = await httpJson<DraftRecord[]>(DRAFTS_URL);
       setDrafts(data);
     } catch (err: unknown) {
       const message =
@@ -174,11 +170,7 @@ export function DraftsPage() {
   const deleteDraft = useCallback(async (id: string) => {
     try {
       setBusyId(id);
-      const res = await fetch(`${DRAFTS_URL}/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Gagal menghapus draft");
-      }
+      await httpJson(`${DRAFTS_URL}/${id}`, { method: "DELETE" });
       setDrafts((prev) => prev.filter((d) => d.id !== id));
     } catch (err: unknown) {
       const message =

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
+import { httpJson } from "@/lib/http";
 import { SummaryChart } from "./SummaryChart";
 
 export type AppNavKey =
@@ -32,7 +33,8 @@ export type AppNavKey =
   | "bahan-keluar"
   | "drafts"
   | "produksi"
-  | "riwayat";
+  | "riwayat"
+  | "users";
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
@@ -73,7 +75,7 @@ function StatCard({
         className={cn(
           "grid size-10 place-items-center rounded-lg",
           "bg-linear-to-br",
-          tone
+          tone,
         )}
       >
         <Icon className="size-4" />
@@ -120,7 +122,7 @@ function MovementRow({
             "rounded-full px-3",
             isIn
               ? "bg-emerald-50 text-emerald-700"
-              : "bg-orange-50 text-orange-700"
+              : "bg-orange-50 text-orange-700",
           )}
         >
           {type}
@@ -286,9 +288,7 @@ export function DashboardPage({
       setLoadingStock(true);
       setStockError(null);
       try {
-        const res = await fetch(ITEMS_URL);
-        if (!res.ok) throw new Error(await res.text());
-        const data = (await res.json()) as ItemApi[];
+        const data = await httpJson<ItemApi[]>(ITEMS_URL);
         if (!cancelled) setItems(data);
       } catch (err: unknown) {
         const message =
@@ -310,14 +310,10 @@ export function DashboardPage({
       setLoadingHistory(true);
       setHistoryError(null);
       try {
-        const [inRes, outRes] = await Promise.all([
-          fetch(`${INBOUND_URL}?limit=30`),
-          fetch(`${OUTBOUND_URL}?limit=30`),
+        const [inboundData, outboundData] = await Promise.all([
+          httpJson<InboundApi[]>(`${INBOUND_URL}?limit=30`),
+          httpJson<OutboundApi[]>(`${OUTBOUND_URL}?limit=30`),
         ]);
-        if (!inRes.ok) throw new Error(await inRes.text());
-        if (!outRes.ok) throw new Error(await outRes.text());
-        const inboundData = (await inRes.json()) as InboundApi[];
-        const outboundData = (await outRes.json()) as OutboundApi[];
         if (!cancelled) {
           setInbound(inboundData);
           setOutbound(outboundData);
@@ -340,16 +336,16 @@ export function DashboardPage({
     const totalSku = items.length;
     const totalStock = items.reduce((sum, it) => sum + (it.stock ?? 0), 0);
     const lowStock = items.filter(
-      (it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5
+      (it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5,
     );
     const emptyStock = items.filter((it) => (it.stock ?? 0) === 0);
     const inboundQty = inbound.reduce(
       (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
-      0
+      0,
     );
     const outboundQty = outbound.reduce(
       (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
-      0
+      0,
     );
     return {
       totalSku,
@@ -392,7 +388,7 @@ export function DashboardPage({
         tone: "from-rose-500/15 to-rose-700/10 text-rose-700",
       },
     ],
-    [inbound.length, outbound.length, summary]
+    [inbound.length, outbound.length, summary],
   );
 
   const alerts = useMemo(() => {
@@ -409,7 +405,7 @@ export function DashboardPage({
     const mapLines = (
       rows: Array<InboundApi | OutboundApi>,
       type: Movement["type"],
-      actorKey: "vendor" | "orderer"
+      actorKey: "vendor" | "orderer",
     ) =>
       rows.flatMap((rec) =>
         rec.lines.map((line, idx) => ({
@@ -421,7 +417,7 @@ export function DashboardPage({
           actor: (rec as never)[actorKey] as string | undefined,
           time: formatDateTime(rec.date ?? rec.createdAt ?? ""),
           note: line.note ?? rec.note,
-        }))
+        })),
       );
 
     const combined = [

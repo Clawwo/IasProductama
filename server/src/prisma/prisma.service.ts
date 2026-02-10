@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { config } from 'dotenv';
+import { readFileSync } from 'fs';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
@@ -18,7 +19,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       );
     }
 
-    const pool = new Pool({ connectionString: url });
+    const sslCertPath =
+      process.env.PGSSLROOTCERT || process.env.SSL_CERT_FILE || undefined;
+    const sslMode = process.env.PGSSLMODE || 'verify-full';
+    const urlObj = new URL(url);
+    const host = urlObj.hostname;
+    urlObj.search = '';
+
+    const sslConfig = sslCertPath
+      ? {
+          ca: readFileSync(sslCertPath, 'utf8'),
+          rejectUnauthorized: sslMode !== 'allow' && sslMode !== 'prefer',
+          servername: host,
+        }
+      : undefined;
+
+    const pool = new Pool({
+      connectionString: urlObj.toString(),
+      ssl: sslConfig,
+    });
     super({ adapter: new PrismaPg(pool) });
   }
   async onModuleInit() {
