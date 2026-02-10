@@ -97,33 +97,6 @@ type RawOutboundApi = {
 
 type ProductionLineApi = {
   code: string;
-  qty: number;
-  note?: string;
-  name?: string;
-};
-
-type ProductionApi = {
-  id: string;
-  code: string;
-  date: string;
-  note?: string;
-  createdAt?: string;
-  rawLines: ProductionLineApi[];
-  finishedLines: ProductionLineApi[];
-  createdBy?: UserRef | null;
-};
-
-type DraftApi = {
-  id: string;
-  type: "INBOUND" | "OUTBOUND" | "PRODUCTION";
-  createdAt?: string;
-  updatedAt?: string;
-  createdBy?: UserRef | null;
-  updatedBy?: UserRef | null;
-};
-
-type ProductionLineApi = {
-  code: string;
   name?: string;
   category?: string;
   subCategory?: string;
@@ -141,6 +114,15 @@ type ProductionApi = {
   rawLines: ProductionLineApi[];
   finishedLines: ProductionLineApi[];
   createdAt?: string;
+};
+
+type DraftApi = {
+  id: string;
+  type: "INBOUND" | "OUTBOUND" | "PRODUCTION";
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: UserRef | null;
+  updatedBy?: UserRef | null;
 };
 
 type Movement = {
@@ -406,6 +388,9 @@ export function RiwayatPage() {
       outboundRawQty,
     };
   }, [movements]);
+
+  // Draft API belum tersedia di halaman ini; kosongkan agar kompilasi tetap aman
+  const drafts: DraftApi[] = [];
 
   const draftActivities = useMemo(() => {
     return drafts
