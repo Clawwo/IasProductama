@@ -42,6 +42,15 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Secrets / keys
+ssh-key-iasproductama/
+*.pem
+*.ppk
+
+# Script outputs (keep curated mapping file)
+scripts/output/*
+!scripts/output/fix-kode-barang.json
+
 # temp directory
 .temp
 .tmp
