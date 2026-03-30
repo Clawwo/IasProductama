@@ -68,6 +68,9 @@ function parseDraftMeta(draft: DraftRecord): DraftMeta {
       ? ((payload as { draftKind?: unknown }).draftKind as string)
       : undefined;
 
+  const isConvectionInbound = draftKind === "CONVECTION_INBOUND";
+  const isConvectionOutbound = draftKind === "CONVECTION_OUTBOUND";
+
   const kind: Filter =
     draft.type === "OUTBOUND" && draftKind === "OUTBOUND_RAW"
       ? "OUTBOUND_RAW"
@@ -120,11 +123,24 @@ function parseDraftMeta(draft: DraftRecord): DraftMeta {
     counterpart = typeof artisan === "string" && artisan.trim() ? artisan : "-";
   } else if (kind === "OUTBOUND") {
     const orderer = (payload as { orderer?: unknown }).orderer;
-    counterpart = typeof orderer === "string" && orderer.trim() ? orderer : "-";
+    const receiver = (payload as { receiver?: unknown }).receiver;
+    if (typeof orderer === "string" && orderer.trim()) {
+      counterpart = orderer;
+    } else {
+      counterpart =
+        typeof receiver === "string" && receiver.trim() ? receiver : "-";
+    }
   } else if (kind === "PRODUCTION") {
     const noteStr = (payload as { note?: unknown }).note;
     counterpart =
       typeof noteStr === "string" && noteStr.trim() ? noteStr : "Produksi";
+  }
+
+  if (isConvectionInbound && counterpart === "-") {
+    counterpart = "Konveksi";
+  }
+  if (isConvectionOutbound && counterpart === "-") {
+    counterpart = "Konveksi";
   }
 
   return { counterpart, date, totalItem, totalQty, note, kind, draftKind };
@@ -191,7 +207,11 @@ export function DraftsPage() {
         payload: draft.payload,
       }),
     );
-    if (meta.kind === "INBOUND") {
+    if (meta.draftKind === "CONVECTION_INBOUND") {
+      window.location.hash = "#konveksi-masuk";
+    } else if (meta.draftKind === "CONVECTION_OUTBOUND") {
+      window.location.hash = "#konveksi-keluar";
+    } else if (meta.kind === "INBOUND") {
       window.location.hash = "#masuk";
     } else if (meta.kind === "OUTBOUND_RAW") {
       window.location.hash = "#bahan-keluar";
@@ -372,12 +392,16 @@ export function DraftsPage() {
 
                 const typeLabel =
                   meta.kind === "INBOUND"
-                    ? "Masuk"
+                    ? meta.draftKind === "CONVECTION_INBOUND"
+                      ? "Masuk Konveksi"
+                      : "Masuk"
                     : meta.kind === "OUTBOUND_RAW"
                       ? "Bahan Keluar"
                       : meta.kind === "PRODUCTION"
                         ? "Produksi"
-                        : "Keluar";
+                        : meta.draftKind === "CONVECTION_OUTBOUND"
+                          ? "Keluar Konveksi"
+                          : "Keluar";
 
                 return (
                   <TableRow key={draft.id}>
