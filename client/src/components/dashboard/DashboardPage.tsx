@@ -34,7 +34,10 @@ export type AppNavKey =
   | "drafts"
   | "produksi"
   | "riwayat"
-  | "users";
+  | "users"
+  | "konveksi"
+  | "konveksi-masuk"
+  | "konveksi-keluar";
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()

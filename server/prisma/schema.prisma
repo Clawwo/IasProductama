@@ -23,6 +23,8 @@ model User {
   draftCreated        Draft[]                @relation("DraftCreatedBy")
   draftUpdated        Draft[]                @relation("DraftUpdatedBy")
   rawOutboundCreated  RawMaterialOutbound[]  @relation("RawOutboundCreatedBy")
+  convectionInboundCreated  ConvectionInbound[]  @relation("ConvectionInboundCreatedBy")
+  convectionOutboundCreated ConvectionOutbound[] @relation("ConvectionOutboundCreatedBy")
 }
 
 model Session {
@@ -208,6 +210,90 @@ model Draft {
 
   @@index([createdById])
   @@index([updatedById])
+}
+
+// Konveksi inventories and movements (separate from existing drumband items)
+model ConvectionItem {
+  code        String   @id
+  name        String?
+  category    String?
+  subCategory String?
+  unit        String?  @default("KG")
+  metersPerKg Float?
+  stockBase   Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inboundLines  ConvectionInboundLine[]
+  outboundLines ConvectionOutboundLine[]
+}
+
+model ConvectionInbound {
+  id          String                  @id @default(uuid())
+  code        String                  @unique
+  vendor      String
+  date        DateTime
+  note        String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  createdById String?
+  createdBy   User?                   @relation("ConvectionInboundCreatedBy", fields: [createdById], references: [id])
+  lines       ConvectionInboundLine[]
+
+  @@index([createdById])
+  @@index([date])
+}
+
+model ConvectionInboundLine {
+  id         String            @id @default(uuid())
+  inboundId  String
+  code       String
+  name       String?
+  category   String?
+  subCategory String?
+  unit       String?           @default("KG")
+  qty        Float
+  qtyInBase  Float
+  note       String?
+  inbound    ConvectionInbound @relation(fields: [inboundId], references: [id], onDelete: Cascade)
+  item       ConvectionItem    @relation(fields: [code], references: [code])
+
+  @@index([inboundId])
+  @@index([code])
+}
+
+model ConvectionOutbound {
+  id          String                   @id @default(uuid())
+  code        String                   @unique
+  receiver    String
+  date        DateTime
+  note        String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  createdById String?
+  createdBy   User?                    @relation("ConvectionOutboundCreatedBy", fields: [createdById], references: [id])
+  lines       ConvectionOutboundLine[]
+
+  @@index([createdById])
+  @@index([date])
+}
+
+model ConvectionOutboundLine {
+  id          String             @id @default(uuid())
+  outboundId  String
+  code        String
+  name        String?
+  category    String?
+  subCategory String?
+  unit        String?            @default("KG")
+  qty         Float
+  qtyInBase   Float
+  note        String?
+  outbound    ConvectionOutbound @relation(fields: [outboundId], references: [id], onDelete: Cascade)
+  item        ConvectionItem     @relation(fields: [code], references: [code])
+
+  @@index([outboundId])
+  @@index([code])
 }
 
 model RawMaterialOutbound {

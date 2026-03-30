@@ -1,0 +1,20 @@
+# Secrets and credentials
+*.pem
+*.ppk
+*.key
+*.p12
+*.pfx
+*.cer
+*.der
+*.crt
+
+# Environment files
+.env
+.env.*
+
+# Private data/workbooks
+GUDANG DRUMBAND & MARCHINGBAND IAS PRODUCTAMA new.xlsx
+doc/*.xlsx
+
+# SSH keys directory
+server/ssh-key-iasproductama/

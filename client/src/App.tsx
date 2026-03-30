@@ -53,9 +53,13 @@ import {
   Factory,
   PackageCheck,
   Users as UsersIcon,
+  Shirt,
 } from "lucide-react";
 import { queryClient } from "./lib/react-query";
 import { UsersPage } from "./components/users/UsersPage";
+import { ConvectionInventoryPage } from "./components/convection/ConvectionInventoryPage";
+import { ConvectionInboundPage } from "./components/convection/ConvectionInboundPage";
+import { ConvectionOutboundPage } from "./components/convection/ConvectionOutboundPage";
 
 type View =
   | "dashboard"
@@ -66,7 +70,10 @@ type View =
   | "produksi"
   | "drafts"
   | "riwayat"
-  | "users";
+  | "users"
+  | "konveksi"
+  | "konveksi-masuk"
+  | "konveksi-keluar";
 
 function SidebarNav({
   active = "dashboard",
@@ -129,6 +136,32 @@ function SidebarNav({
     },
   ];
 
+  const convectionItems: Array<{
+    key: AppNavKey;
+    label: string;
+    icon: typeof LayoutDashboard;
+    href: string;
+  }> = [
+    {
+      key: "konveksi",
+      label: "Stok Konveksi",
+      icon: Shirt,
+      href: "#konveksi",
+    },
+    {
+      key: "konveksi-masuk",
+      label: "Konveksi Masuk",
+      icon: ArrowDownLeft,
+      href: "#konveksi-masuk",
+    },
+    {
+      key: "konveksi-keluar",
+      label: "Konveksi Keluar",
+      icon: ArrowUpRight,
+      href: "#konveksi-keluar",
+    },
+  ];
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -180,6 +213,32 @@ function SidebarNav({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Konveksi</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {convectionItems.map((item) => (
+                <SidebarMenuItem key={item.key}>
+                  <SidebarMenuButton
+                    isActive={active === item.key}
+                    asChild
+                    onClick={(e) => {
+                      if (onNavigate) {
+                        e.preventDefault();
+                        onNavigate(item.key);
+                      }
+                    }}
+                  >
+                    <a href={item.href} className="flex items-center gap-2">
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -272,6 +331,9 @@ function resolveViewFromHash(hash: string, role?: string): View {
     drafts: role === "PELIHAT" ? "dashboard" : "drafts",
     riwayat: "riwayat",
     users: role === "ADMIN" ? "users" : "dashboard",
+    konveksi: "konveksi",
+    "konveksi-masuk": role === "PELIHAT" ? "konveksi" : "konveksi-masuk",
+    "konveksi-keluar": role === "PELIHAT" ? "konveksi" : "konveksi-keluar",
   };
   return allowed[key] ?? "dashboard";
 }
@@ -371,6 +433,9 @@ function App() {
       drafts: "drafts",
       riwayat: "riwayat",
       users: "users",
+      konveksi: "konveksi",
+      "konveksi-masuk": "konveksi-masuk",
+      "konveksi-keluar": "konveksi-keluar",
     };
     const next = map[key] ?? "dashboard";
     setView(next);
@@ -592,6 +657,66 @@ function App() {
           </div>
         ) : (
           <ProductionPage />
+        )}
+      </Shell>
+    );
+  }
+
+  if (view === "konveksi") {
+    return (
+      <Shell
+        title="Stok Konveksi"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        <ConvectionInventoryPage />
+      </Shell>
+    );
+  }
+
+  if (view === "konveksi-masuk") {
+    return (
+      <Shell
+        title="Barang Masuk Konveksi"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses transaksi konveksi dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <ConvectionInboundPage />
+        )}
+      </Shell>
+    );
+  }
+
+  if (view === "konveksi-keluar") {
+    return (
+      <Shell
+        title="Barang Keluar Konveksi"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        {user?.role === "PELIHAT" ? (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses transaksi konveksi dibatasi untuk petugas atau admin.
+          </div>
+        ) : (
+          <ConvectionOutboundPage />
         )}
       </Shell>
     );
