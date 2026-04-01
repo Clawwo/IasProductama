@@ -462,9 +462,10 @@ export function RawMaterialsOutboundTrackingPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Tracking Bahan Baku Keluar</h1>
+          <h1 className="text-2xl font-semibold">Bahan Baku Keluar</h1>
           <p className="text-sm text-muted-foreground">
-            Catat bahan baku keluar ke pengrajin dan tandai saat sudah diterima.
+            Catat bahan baku yang dikirim ke pengrajin lalu tandai saat
+            diterima.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -502,7 +503,7 @@ export function RawMaterialsOutboundTrackingPage() {
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <PackageOpen className="size-4" />
-          Form Bahan Baku Keluar
+          Form barang keluar
         </div>
         <Separator className="my-3" />
         <div className="grid gap-3 md:grid-cols-3">
@@ -749,9 +750,9 @@ export function RawMaterialsOutboundTrackingPage() {
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Daftar Tracking</h2>
+            <h2 className="text-lg font-semibold">Daftar pengiriman</h2>
             <p className="text-sm text-muted-foreground">
-              Status OUT berubah menjadi RECEIVED saat sudah sampai ke
+              Status OUT akan berubah ke RECEIVED saat barang diterima
               pengrajin.
             </p>
           </div>
@@ -770,9 +771,7 @@ export function RawMaterialsOutboundTrackingPage() {
         <Separator className="my-3" />
 
         {loading ? (
-          <div className="text-sm text-muted-foreground">
-            Memuat tracking...
-          </div>
+          <div className="text-sm text-muted-foreground">Memuat data...</div>
         ) : pendingOutbounds.length === 0 ? (
           <div className="text-sm text-muted-foreground">
             Tidak ada pengiriman yang menunggu diterima.

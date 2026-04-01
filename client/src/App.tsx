@@ -1,18 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { LoginCard } from "./components/auth/LoginCard";
 import { LoginHero } from "./components/auth/LoginHero";
-import { InventoryPage } from "./components/inventory/InventoryPage";
-import { InboundPage } from "./components/inventory/InboundPage";
-import { OutboundPage } from "./components/inventory/OutboundPage";
-import {
-  DashboardPage,
-  type AppNavKey,
-} from "./components/dashboard/DashboardPage";
-import { DraftsPage } from "./components/drafts/DraftsPage";
-import { RiwayatPage } from "./components/history/RiwayatPage";
-import { ProductionPage } from "./components/production/ProductionPage";
-import { RawMaterialsOutboundTrackingPage } from "./components/raw/RawMaterialsOutboundTrackingPage";
+import type { AppNavKey } from "./components/dashboard/DashboardPage";
 import {
   Sidebar,
   SidebarContent,
@@ -56,10 +46,67 @@ import {
   Shirt,
 } from "lucide-react";
 import { queryClient } from "./lib/react-query";
-import { UsersPage } from "./components/users/UsersPage";
-import { ConvectionInventoryPage } from "./components/convection/ConvectionInventoryPage";
-import { ConvectionInboundPage } from "./components/convection/ConvectionInboundPage";
-import { ConvectionOutboundPage } from "./components/convection/ConvectionOutboundPage";
+
+const DashboardPage = lazy(() =>
+  import("./components/dashboard/DashboardPage").then((m) => ({
+    default: m.DashboardPage,
+  })),
+);
+const InventoryPage = lazy(() =>
+  import("./components/inventory/InventoryPage").then((m) => ({
+    default: m.InventoryPage,
+  })),
+);
+const InboundPage = lazy(() =>
+  import("./components/inventory/InboundPage").then((m) => ({
+    default: m.InboundPage,
+  })),
+);
+const OutboundPage = lazy(() =>
+  import("./components/inventory/OutboundPage").then((m) => ({
+    default: m.OutboundPage,
+  })),
+);
+const DraftsPage = lazy(() =>
+  import("./components/drafts/DraftsPage").then((m) => ({
+    default: m.DraftsPage,
+  })),
+);
+const RiwayatPage = lazy(() =>
+  import("./components/history/RiwayatPage").then((m) => ({
+    default: m.RiwayatPage,
+  })),
+);
+const ProductionPage = lazy(() =>
+  import("./components/production/ProductionPage").then((m) => ({
+    default: m.ProductionPage,
+  })),
+);
+const RawMaterialsOutboundTrackingPage = lazy(() =>
+  import("./components/raw/RawMaterialsOutboundTrackingPage").then((m) => ({
+    default: m.RawMaterialsOutboundTrackingPage,
+  })),
+);
+const UsersPage = lazy(() =>
+  import("./components/users/UsersPage").then((m) => ({
+    default: m.UsersPage,
+  })),
+);
+const ConvectionInventoryPage = lazy(() =>
+  import("./components/convection/ConvectionInventoryPage").then((m) => ({
+    default: m.ConvectionInventoryPage,
+  })),
+);
+const ConvectionInboundPage = lazy(() =>
+  import("./components/convection/ConvectionInboundPage").then((m) => ({
+    default: m.ConvectionInboundPage,
+  })),
+);
+const ConvectionOutboundPage = lazy(() =>
+  import("./components/convection/ConvectionOutboundPage").then((m) => ({
+    default: m.ConvectionOutboundPage,
+  })),
+);
 
 type View =
   | "dashboard"
@@ -279,6 +326,12 @@ function Shell({
   logoutLoading: boolean;
   children: React.ReactNode;
 }) {
+  const pageFallback = (
+    <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+      Memuat halaman...
+    </div>
+  );
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
@@ -312,7 +365,9 @@ function Shell({
               </button>
             </div>
           </header>
-          <main className="px-4 py-6 md:px-6 md:py-8">{children}</main>
+          <main className="px-4 py-6 md:px-6 md:py-8">
+            <Suspense fallback={pageFallback}>{children}</Suspense>
+          </main>
         </SidebarInset>
       </div>
     </SidebarProvider>
@@ -458,9 +513,9 @@ function App() {
           <div className="hidden w-1/2 border-r border-slate-200 md:flex">
             <LoginHero
               brand="IasProductama"
-              subtitle="Sistem ini bikin stok dan pergerakan alat drumband tertib. Peminjaman jadi tercatat rapi dan cepat."
-              title="Rapi. Terpantau. Siap Dipakai."
-              quote="Sistem ini bikin stok dan pergerakan alat drumband jauh lebih tertib. Peminjaman jadi tercatat rapi dan cepat."
+              subtitle="Kelola stok gudang dengan lebih mudah dan rapi."
+              title="Stok Rapi, Kerja Lebih Mudah"
+              quote="Pencatatan jadi lebih jelas dan stok lebih mudah dipantau setiap hari."
               author="Dewa, Admin Gudang"
             />
           </div>
@@ -472,7 +527,7 @@ function App() {
                   Masuk Akun
                 </h1>
                 <p className="text-sm text-slate-600">
-                  Gunakan akun admin atau petugas untuk masuk ke dashboard.
+                  Masuk dengan akun admin atau petugas.
                 </p>
               </div>
 
@@ -492,9 +547,7 @@ function App() {
                 }}
                 onSubmit={() => loginMutation.mutate()}
                 onForgotPassword={() =>
-                  setErrorMessage(
-                    "Silakan hubungi admin untuk reset kata sandi sementara.",
-                  )
+                  setErrorMessage("Hubungi admin untuk reset kata sandi.")
                 }
               />
             </div>
@@ -535,7 +588,7 @@ function App() {
           <UsersPage />
         ) : (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses halaman pengguna khusus admin.
+            Halaman ini hanya untuk admin.
           </div>
         )}
       </Shell>
@@ -571,7 +624,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses transaksi barang keluar dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <OutboundPage />
@@ -593,7 +646,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses transaksi bahan baku keluar dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <RawMaterialsOutboundTrackingPage />
@@ -615,7 +668,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses draft dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <DraftsPage />
@@ -653,7 +706,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses produksi dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <ProductionPage />
@@ -673,7 +726,7 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        <ConvectionInventoryPage />
+        <ConvectionInventoryPage readOnly={user?.role === "PELIHAT"} />
       </Shell>
     );
   }
@@ -691,7 +744,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses transaksi konveksi dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <ConvectionInboundPage />
@@ -713,7 +766,7 @@ function App() {
       >
         {user?.role === "PELIHAT" ? (
           <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses transaksi konveksi dibatasi untuk petugas atau admin.
+            Halaman ini hanya untuk admin atau petugas.
           </div>
         ) : (
           <ConvectionOutboundPage />

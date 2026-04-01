@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateConvectionItemDto } from './dto/create-convection-item.dto.js';
 import { CreateConvectionInboundDto } from './dto/create-convection-inbound.dto.js';
@@ -111,6 +112,16 @@ function resolveConvectionCategory(
 ): string {
   const c = (code ?? '').toUpperCase();
   const n = (name ?? '').toUpperCase();
+  const selectedCategory = normalizeCategoryAlias(existing);
+
+  // Respect explicit category chosen by user (except generic aliases).
+  if (
+    selectedCategory &&
+    selectedCategory !== 'Lainnya' &&
+    selectedCategory !== 'Produk'
+  ) {
+    return selectedCategory;
+  }
 
   if (n.includes('PITA GOLD')) return 'Pita Gold';
   if (n.includes('PITA SILVER')) return 'Pita Silver';
@@ -145,7 +156,7 @@ function resolveConvectionCategory(
     return 'Kain Drill';
   }
 
-  const fallback = normalizeCategoryAlias(existing);
+  const fallback = selectedCategory;
   return fallback || 'Lainnya';
 }
 
@@ -192,7 +203,7 @@ export class ConvectionService {
     return this.prisma.convectionItem.findMany({ orderBy: { code: 'asc' } });
   }
 
-  createItem(dto: CreateConvectionItemDto) {
+  async createItem(dto: CreateConvectionItemDto) {
     const code = normalizeItemCode(dto.code);
     if (!code) {
       throw new BadRequestException('Kode barang konveksi tidak valid');
@@ -204,21 +215,45 @@ export class ConvectionService {
     }
 
     const category = resolveConvectionCategory(code, name, dto.category);
-    const unit = shouldForcePcsUnit(category, null, name)
+    const subCategory = (dto.subCategory ?? '').trim() || null;
+    const unit = shouldForcePcsUnit(category, subCategory, name)
       ? 'PCS'
       : normalizeUnit(dto.unit);
+    const metersPerKg = unit === 'PCS' ? null : dto.metersPerKg;
 
-    return this.prisma.convectionItem.create({
-      data: {
-        code,
-        name,
-        category,
-        subCategory: null,
-        unit,
-        metersPerKg: dto.metersPerKg,
-        stockBase: dto.stockBase ?? 0,
-      },
+    const existing = await this.prisma.convectionItem.findUnique({
+      where: { code },
+      select: { code: true },
     });
+    if (existing) {
+      throw new BadRequestException(
+        `Kode ${code} sudah ada. Silakan edit barang yang sudah ada.`,
+      );
+    }
+
+    try {
+      return await this.prisma.convectionItem.create({
+        data: {
+          code,
+          name,
+          category,
+          subCategory,
+          unit,
+          metersPerKg,
+          stockBase: dto.stockBase ?? 0,
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          `Kode ${code} sudah ada. Silakan edit barang yang sudah ada.`,
+        );
+      }
+      throw err;
+    }
   }
 
   async updateItem(code: string, dto: UpdateConvectionItemDto) {
@@ -240,24 +275,30 @@ export class ConvectionService {
       normalizedName,
       dto.category ?? exists.category,
     );
+    const normalizedSubCategory =
+      dto.subCategory !== undefined
+        ? (dto.subCategory ?? '').trim() || null
+        : exists.subCategory;
     const normalizedUnit = shouldForcePcsUnit(
       normalizedCategory,
-      exists.subCategory,
+      normalizedSubCategory,
       normalizedName,
     )
       ? 'PCS'
       : dto.unit
         ? normalizeUnit(dto.unit)
         : (exists.unit ?? 'KG');
+    const normalizedMetersPerKg =
+      normalizedUnit === 'PCS' ? null : (dto.metersPerKg ?? undefined);
 
     return this.prisma.convectionItem.update({
       where: { code },
       data: {
         name: normalizedName,
         category: normalizedCategory,
-        subCategory: null,
+        subCategory: normalizedSubCategory,
         unit: normalizedUnit,
-        metersPerKg: dto.metersPerKg ?? undefined,
+        metersPerKg: normalizedMetersPerKg,
         stockBase: dto.stockBase ?? undefined,
       },
     });

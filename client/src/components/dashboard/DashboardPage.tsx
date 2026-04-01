@@ -5,6 +5,7 @@ import {
   History,
   PackageCheck,
   PackagePlus,
+  RefreshCw,
   ShieldCheck,
   TrendingUp,
   Warehouse,
@@ -21,7 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { httpJson } from "@/lib/http";
 import { SummaryChart } from "./SummaryChart";
 
@@ -43,17 +44,29 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
   .replace(/\/$/, "");
 const ITEMS_URL = `${API_BASE}/api/items`;
-const INBOUND_URL = `${API_BASE}/api/inbound`;
-const OUTBOUND_URL = `${API_BASE}/api/outbound`;
+const RAW_URL = `${API_BASE}/api/raw-materials`;
+const PRODUCTS_URL = `${API_BASE}/api/products`;
+const HISTORY_URL = `${API_BASE}/api/history`;
+const DRAFTS_PAGED_URL = `${API_BASE}/api/drafts/paged`;
 
 function formatDateTime(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("id-ID", {
+    year: "numeric",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+  });
+}
+
+function formatQty(value: number) {
+  const num = Number.isFinite(value) ? value : 0;
+  const rounded = Math.round((num + Number.EPSILON) * 100) / 100;
+  return rounded.toLocaleString("id-ID", {
+    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -65,33 +78,53 @@ function StatCard({
   delta,
   icon: Icon,
   tone,
+  onClick,
 }: {
   label: string;
   value: string;
   delta: string;
   icon: typeof ArrowDownLeft;
   tone: string;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="bg-white border text-sm rounded-xl p-4 shadow-sm">
+  const className = cn(
+    "border text-left rounded-2xl p-5 shadow-sm transition",
+    "bg-white hover:border-slate-300 hover:shadow",
+    onClick && "cursor-pointer",
+  );
+
+  const content = (
+    <>
       <div
         className={cn(
-          "grid size-10 place-items-center rounded-lg",
+          "grid size-12 place-items-center rounded-xl",
           "bg-linear-to-br",
           tone,
         )}
       >
-        <Icon className="size-4" />
+        <Icon className="size-5" />
       </div>
       <p className="mt-3 text-muted-foreground">{label}</p>
       <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold tracking-tight">{value}</span>
-        <Badge variant="secondary" className="rounded-full px-2 py-1 text-xs">
+        <span className="text-2xl font-semibold tracking-tight text-slate-900">
+          {value}
+        </span>
+        <Badge variant="secondary" className="rounded-full px-2.5 py-1 text-xs">
           {delta}
         </Badge>
       </div>
-    </div>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 function MovementRow({
@@ -117,7 +150,7 @@ function MovementRow({
     <TableRow data-timestamp={timestamp}>
       <TableCell>
         <div className="font-medium">{item}</div>
-        <p className="text-xs text-muted-foreground">{note}</p>
+        <p className="text-xs text-muted-foreground">{note || "-"}</p>
       </TableCell>
       <TableCell>
         <Badge
@@ -134,7 +167,7 @@ function MovementRow({
       <TableCell className="font-semibold">
         {isIn ? `+${qty}` : `-${qty}`}
       </TableCell>
-      <TableCell className="text-muted-foreground">{actor}</TableCell>
+      <TableCell className="text-muted-foreground">{actor || "-"}</TableCell>
       <TableCell className="text-muted-foreground">{time}</TableCell>
     </TableRow>
   );
@@ -173,11 +206,12 @@ function QuickAction({
 }) {
   return (
     <button
-      className="text-left bg-white border rounded-xl p-4 w-full transition shadow-sm hover:border-slate-300 hover:shadow"
+      type="button"
+      className="cursor-pointer text-left bg-white border rounded-2xl p-5 w-full transition shadow-sm hover:border-slate-300 hover:shadow"
       onClick={onClick}
     >
       <div className="flex items-center gap-3">
-        <span className="bg-slate-900 text-white grid size-10 place-items-center rounded-lg">
+        <span className="bg-slate-900 text-white grid size-12 place-items-center rounded-xl">
           <Icon className="size-5" />
         </span>
         <div>
@@ -189,7 +223,13 @@ function QuickAction({
   );
 }
 
-function HeroStrip({ onNavigate }: { onNavigate?: (key: AppNavKey) => void }) {
+function HeroStrip({
+  onOpenDrafts,
+  draftCount,
+}: {
+  onOpenDrafts: () => void;
+  draftCount: number;
+}) {
   return (
     <div className="relative overflow-hidden rounded-2xl border bg-linear-to-r from-slate-900 via-slate-800 to-slate-700 p-6 text-white shadow-md">
       <div
@@ -202,11 +242,10 @@ function HeroStrip({ onNavigate }: { onNavigate?: (key: AppNavKey) => void }) {
             Gudang aktif
           </p>
           <h2 className="text-2xl font-semibold leading-tight">
-            Pantau pergerakan harian
+            Ringkasan stok hari ini
           </h2>
           <p className="text-white/70 text-sm mt-1">
-            Fokus pada alur masuk-keluar hari ini. Draftkan dokumen sebelum
-            konfirmasi pengiriman.
+            Cek stok, barang masuk, barang keluar, dan draft dalam satu layar.
           </p>
         </div>
         <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 backdrop-blur">
@@ -214,19 +253,13 @@ function HeroStrip({ onNavigate }: { onNavigate?: (key: AppNavKey) => void }) {
             <History className="size-5" />
           </div>
           <div>
-            <p className="text-sm text-white/70">Antrian dokumen</p>
-            <p className="text-lg font-semibold">6 draft siap cek</p>
+            <p className="text-sm text-white/80">Antrian dokumen</p>
+            <p className="text-lg font-semibold">{draftCount} draft siap cek</p>
           </div>
           <Button
             variant="secondary"
-            className="bg-white text-slate-900 hover:bg-slate-100"
-            onClick={() => {
-              if (onNavigate) {
-                onNavigate("drafts");
-              } else {
-                window.location.hash = "#drafts";
-              }
-            }}
+            className="cursor-pointer bg-white text-slate-900 hover:bg-slate-100"
+            onClick={onOpenDrafts}
           >
             Lihat draft
           </Button>
@@ -247,24 +280,40 @@ export function DashboardPage({
     name?: string;
     category?: string;
   };
-  type LineApi = { code: string; qty: number; note?: string; name?: string };
-  type InboundApi = {
+  type HistoryApi = {
     id: string;
-    code?: string;
-    vendor?: string;
-    date: string;
+    direction: "Masuk" | "Keluar";
+    txCode: string;
+    itemCode: string;
+    name: string;
+    qty: number;
+    actor?: string;
+    rawTime: string;
     note?: string;
-    lines: LineApi[];
-    createdAt?: string;
   };
-  type OutboundApi = {
-    id: string;
-    code?: string;
-    orderer?: string;
-    date: string;
-    note?: string;
-    lines: LineApi[];
-    createdAt?: string;
+  type HistoryStatsApi = {
+    total: number;
+    inboundCount: number;
+    outboundCount: number;
+    outboundGoodsCount: number;
+    outboundRawCount: number;
+    inboundQty: number;
+    outboundQty: number;
+    outboundRawQty: number;
+  };
+  type HistoryResponseApi = {
+    data: HistoryApi[];
+    total: number;
+    page: number;
+    perPage: number;
+    pageCount: number;
+    stats: HistoryStatsApi;
+  };
+  type DraftPagedResponse = {
+    total: number;
+    page: number;
+    perPage: number;
+    pageCount: number;
   };
   type Movement = {
     id: string;
@@ -278,62 +327,201 @@ export function DashboardPage({
   };
 
   const [items, setItems] = useState<ItemApi[]>([]);
-  const [inbound, setInbound] = useState<InboundApi[]>([]);
-  const [outbound, setOutbound] = useState<OutboundApi[]>([]);
+  const [historyRows, setHistoryRows] = useState<HistoryApi[]>([]);
+  const [chartRows, setChartRows] = useState<HistoryApi[]>([]);
+  const [historyStats, setHistoryStats] = useState<HistoryStatsApi>({
+    total: 0,
+    inboundCount: 0,
+    outboundCount: 0,
+    outboundGoodsCount: 0,
+    outboundRawCount: 0,
+    inboundQty: 0,
+    outboundQty: 0,
+    outboundRawQty: 0,
+  });
+  const [draftCount, setDraftCount] = useState(0);
   const [loadingStock, setLoadingStock] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const refreshing = loadingStock || loadingHistory || loadingDrafts;
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoadingStock(true);
-      setStockError(null);
-      try {
-        const data = await httpJson<ItemApi[]>(ITEMS_URL);
-        if (!cancelled) setItems(data);
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Gagal memuat stok.";
-        if (!cancelled) setStockError(message);
-      } finally {
-        if (!cancelled) setLoadingStock(false);
+  const navigateTo = useCallback(
+    (key: AppNavKey) => {
+      if (onNavigate) {
+        onNavigate(key);
+      } else {
+        window.location.hash = key === "dashboard" ? "#dashboard" : `#${key}`;
       }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
+    },
+    [onNavigate],
+  );
+
+  const toInputDate = useCallback((date: Date) => {
+    const adjusted = new Date(
+      date.getTime() - date.getTimezoneOffset() * 60000,
+    );
+    return adjusted.toISOString().slice(0, 10);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadHistory = async () => {
-      setLoadingHistory(true);
-      setHistoryError(null);
-      try {
-        const [inboundData, outboundData] = await Promise.all([
-          httpJson<InboundApi[]>(`${INBOUND_URL}?limit=30`),
-          httpJson<OutboundApi[]>(`${OUTBOUND_URL}?limit=30`),
-        ]);
-        if (!cancelled) {
-          setInbound(inboundData);
-          setOutbound(outboundData);
-        }
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Gagal memuat riwayat.";
-        if (!cancelled) setHistoryError(message);
-      } finally {
-        if (!cancelled) setLoadingHistory(false);
-      }
-    };
+  const loadStock = useCallback(async () => {
+    setLoadingStock(true);
+    setStockError(null);
+    try {
+      const [itemsData, rawData, productsData] = await Promise.all([
+        httpJson<ItemApi[]>(ITEMS_URL),
+        httpJson<ItemApi[]>(RAW_URL),
+        httpJson<ItemApi[]>(PRODUCTS_URL),
+      ]);
+
+      const merged = [
+        ...itemsData,
+        ...rawData.filter(
+          (raw) => !itemsData.some((it) => it.code === raw.code),
+        ),
+        ...productsData.filter(
+          (prod) =>
+            !itemsData.some((it) => it.code === prod.code) &&
+            !rawData.some((raw) => raw.code === prod.code),
+        ),
+      ]
+        .filter((item) => Boolean(item.code))
+        .map((item) => ({
+          ...item,
+          stock: Number.isFinite(Number(item.stock)) ? Number(item.stock) : 0,
+        }));
+
+      setItems(merged);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal memuat stok dashboard.";
+      setStockError(message);
+    } finally {
+      setLoadingStock(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const today = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 6);
+
+      const recentParams = new URLSearchParams({
+        page: "1",
+        perPage: "120",
+      });
+      const chartParams = new URLSearchParams({
+        page: "1",
+        perPage: "500",
+        fromDate: toInputDate(start),
+        toDate: toInputDate(today),
+      });
+
+      const nonConvectionCategories = [
+        "Barang",
+        "Bahan baku",
+        "Produksi",
+      ] as const;
+      const nonConvectionStatsRequests = nonConvectionCategories.map(
+        (category) => {
+          const params = new URLSearchParams({
+            page: "1",
+            perPage: "1",
+            category,
+          });
+          return httpJson<HistoryResponseApi>(
+            `${HISTORY_URL}?${params.toString()}`,
+          );
+        },
+      );
+
+      const [recent, chart, ...nonConvectionStatsResults] = await Promise.all([
+        httpJson<HistoryResponseApi>(
+          `${HISTORY_URL}?${recentParams.toString()}`,
+        ),
+        httpJson<HistoryResponseApi>(
+          `${HISTORY_URL}?${chartParams.toString()}`,
+        ),
+        ...nonConvectionStatsRequests,
+      ]);
+
+      const nonConvectionStats =
+        nonConvectionStatsResults.reduce<HistoryStatsApi>(
+          (acc, result) => {
+            const stats = result.stats;
+            return {
+              total: acc.total + (stats?.total ?? 0),
+              inboundCount: acc.inboundCount + (stats?.inboundCount ?? 0),
+              outboundCount: acc.outboundCount + (stats?.outboundCount ?? 0),
+              outboundGoodsCount:
+                acc.outboundGoodsCount + (stats?.outboundGoodsCount ?? 0),
+              outboundRawCount:
+                acc.outboundRawCount + (stats?.outboundRawCount ?? 0),
+              inboundQty: acc.inboundQty + (stats?.inboundQty ?? 0),
+              outboundQty: acc.outboundQty + (stats?.outboundQty ?? 0),
+              outboundRawQty: acc.outboundRawQty + (stats?.outboundRawQty ?? 0),
+            };
+          },
+          {
+            total: 0,
+            inboundCount: 0,
+            outboundCount: 0,
+            outboundGoodsCount: 0,
+            outboundRawCount: 0,
+            inboundQty: 0,
+            outboundQty: 0,
+            outboundRawQty: 0,
+          },
+        );
+
+      setHistoryRows(recent.data ?? []);
+      setHistoryStats(nonConvectionStats);
+      setChartRows(chart.data ?? []);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal memuat riwayat dashboard.";
+      setHistoryError(message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [toInputDate]);
+
+  const loadDraftCount = useCallback(async () => {
+    setLoadingDrafts(true);
+    try {
+      const params = new URLSearchParams({ page: "1", perPage: "1" });
+      const response = await httpJson<DraftPagedResponse>(
+        `${DRAFTS_PAGED_URL}?${params.toString()}`,
+      );
+      setDraftCount(response.total ?? 0);
+    } catch {
+      setDraftCount(0);
+    } finally {
+      setLoadingDrafts(false);
+    }
+  }, []);
+
+  const refreshDashboard = useCallback(() => {
+    loadStock();
     loadHistory();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    loadDraftCount();
+  }, [loadStock, loadHistory, loadDraftCount]);
+
+  useEffect(() => {
+    loadStock();
+  }, [loadStock]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  useEffect(() => {
+    loadDraftCount();
+  }, [loadDraftCount]);
 
   const summary = useMemo(() => {
     const totalSku = items.length;
@@ -342,39 +530,35 @@ export function DashboardPage({
       (it) => (it.stock ?? 0) > 0 && (it.stock ?? 0) <= 5,
     );
     const emptyStock = items.filter((it) => (it.stock ?? 0) === 0);
-    const inboundQty = inbound.reduce(
-      (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
-      0,
-    );
-    const outboundQty = outbound.reduce(
-      (sum, rec) => sum + rec.lines.reduce((s, l) => s + l.qty, 0),
-      0,
-    );
     return {
       totalSku,
       totalStock,
       lowStock,
       emptyStock,
-      inboundQty,
-      outboundQty,
+      inboundQty: historyStats.inboundQty,
+      outboundQty: historyStats.outboundQty,
+      inboundCount: historyStats.inboundCount,
+      outboundCount: historyStats.outboundCount,
     };
-  }, [items, inbound, outbound]);
+  }, [historyStats, items]);
 
   const stats = useMemo(
     () => [
       {
         label: "Barang masuk",
-        value: String(inbound.length ?? 0),
-        delta: `${summary.inboundQty} pcs`,
+        value: String(summary.inboundCount ?? 0),
+        delta: `${formatQty(summary.inboundQty)} pcs`,
         icon: ArrowDownLeft,
         tone: "from-emerald-500/15 to-emerald-700/10 text-emerald-700",
+        onClick: () => navigateTo("masuk"),
       },
       {
         label: "Barang keluar",
-        value: String(outbound.length ?? 0),
-        delta: `${summary.outboundQty} pcs`,
+        value: String(summary.outboundCount ?? 0),
+        delta: `${formatQty(summary.outboundQty)} pcs`,
         icon: ArrowUpRight,
         tone: "from-amber-500/15 to-amber-700/10 text-amber-700",
+        onClick: () => navigateTo("keluar"),
       },
       {
         label: "Saldo stok",
@@ -382,6 +566,7 @@ export function DashboardPage({
         delta: `${summary.totalSku} SKU`,
         icon: Warehouse,
         tone: "from-sky-500/15 to-sky-700/10 text-sky-700",
+        onClick: () => navigateTo("inventory"),
       },
       {
         label: "Stok menipis",
@@ -389,9 +574,10 @@ export function DashboardPage({
         delta: "<= 5 pcs",
         icon: ShieldCheck,
         tone: "from-rose-500/15 to-rose-700/10 text-rose-700",
+        onClick: () => navigateTo("inventory"),
       },
     ],
-    [inbound.length, outbound.length, summary],
+    [navigateTo, summary],
   );
 
   const alerts = useMemo(() => {
@@ -405,30 +591,20 @@ export function DashboardPage({
   }, [summary.lowStock]);
 
   const movements: Movement[] = useMemo(() => {
-    const mapLines = (
-      rows: Array<InboundApi | OutboundApi>,
-      type: Movement["type"],
-      actorKey: "vendor" | "orderer",
-    ) =>
-      rows.flatMap((rec) =>
-        rec.lines.map((line, idx) => ({
-          timestamp: Date.parse(rec.date ?? rec.createdAt ?? "") || 0,
-          id: `${type}-${rec.id}-${idx}-${line.code}`,
-          item: line.name ?? line.code,
-          type,
-          qty: line.qty,
-          actor: (rec as never)[actorKey] as string | undefined,
-          time: formatDateTime(rec.date ?? rec.createdAt ?? ""),
-          note: line.note ?? rec.note,
-        })),
-      );
-
-    const combined = [
-      ...mapLines(inbound, "Masuk", "vendor"),
-      ...mapLines(outbound, "Keluar", "orderer"),
-    ];
-    return combined.sort((a, b) => b.timestamp - a.timestamp).slice(0, 12);
-  }, [inbound, outbound]);
+    return historyRows
+      .map((row) => ({
+        id: row.id,
+        item: row.name || row.itemCode,
+        type: row.direction,
+        qty: Math.abs(Number(row.qty) || 0),
+        actor: row.actor,
+        time: formatDateTime(row.rawTime),
+        timestamp: Date.parse(row.rawTime) || 0,
+        note: row.note,
+      }))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 12);
+  }, [historyRows]);
 
   const chartData = useMemo(() => {
     const days = Array.from({ length: 7 }).map((_, idx) => {
@@ -442,60 +618,94 @@ export function DashboardPage({
       const dayEnd = new Date(day);
       dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const inboundQty = inbound.reduce((sum, rec) => {
-        const ts = Date.parse(rec.date ?? rec.createdAt ?? "");
-        return ts >= day.getTime() && ts < dayEnd.getTime()
-          ? sum + rec.lines.reduce((s, l) => s + l.qty, 0)
-          : sum;
-      }, 0);
+      let inboundQty = 0;
+      let outboundQty = 0;
 
-      const outboundQty = outbound.reduce((sum, rec) => {
-        const ts = Date.parse(rec.date ?? rec.createdAt ?? "");
-        return ts >= day.getTime() && ts < dayEnd.getTime()
-          ? sum + rec.lines.reduce((s, l) => s + l.qty, 0)
-          : sum;
-      }, 0);
+      chartRows.forEach((row) => {
+        const ts = Date.parse(row.rawTime);
+        if (Number.isNaN(ts) || ts < day.getTime() || ts >= dayEnd.getTime()) {
+          return;
+        }
+        const qty = Math.abs(Number(row.qty) || 0);
+        if (row.direction === "Masuk") {
+          inboundQty += qty;
+        } else {
+          outboundQty += qty;
+        }
+      });
 
       return {
-        label: day.toLocaleDateString("id-ID", { weekday: "short" }),
+        label: day.toLocaleDateString("id-ID", {
+          weekday: "short",
+          day: "2-digit",
+        }),
         inbound: inboundQty,
         outbound: outboundQty,
       };
     });
 
     return byDay;
-  }, [inbound, outbound]);
+  }, [chartRows]);
 
   const quickActions = [
     {
       icon: PackagePlus,
       label: "Catat barang masuk",
-      description: "Terima stok baru atau retur vendor",
-      onClick: () => onNavigate?.("masuk"),
+      description: "Catat barang yang masuk",
+      onClick: () => navigateTo("masuk"),
     },
     {
       icon: PackageCheck,
       label: "Catat barang keluar",
-      description: "Pengiriman, peminjaman, atau mutasi",
-      onClick: () => onNavigate?.("keluar"),
+      description: "Catat barang yang keluar",
+      onClick: () => navigateTo("keluar"),
     },
     {
       icon: ClipboardList,
       label: "Lihat inventory",
-      description: "Cek stok dan detail barang",
-      onClick: () => onNavigate?.("inventory"),
+      description: "Lihat stok barang saat ini",
+      onClick: () => navigateTo("inventory"),
     },
     {
       icon: History,
       label: "Daftar riwayat",
-      description: "Pantau histori masuk-keluar",
-      onClick: () => onNavigate?.("riwayat"),
+      description: "Lihat riwayat transaksi",
+      onClick: () => navigateTo("riwayat"),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <HeroStrip onNavigate={onNavigate} />
+      <HeroStrip
+        draftCount={draftCount}
+        onOpenDrafts={() => navigateTo("drafts")}
+      />
+
+      <section className="rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-slate-600">Status data</p>
+            <h3 className="text-lg font-semibold text-slate-900">
+              Data dashboard
+            </h3>
+            <p className="text-sm text-slate-600">
+              Tekan Sinkronkan data untuk memperbarui angka.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="cursor-pointer border-slate-300"
+            onClick={refreshDashboard}
+            disabled={refreshing}
+          >
+            <RefreshCw
+              className={cn("mr-2 size-4", refreshing && "animate-spin")}
+            />
+            Sinkronkan data
+          </Button>
+        </div>
+      </section>
 
       <section
         id="inventory"
@@ -525,13 +735,14 @@ export function DashboardPage({
                   Pergerakan terbaru
                 </p>
                 <h3 className="text-lg font-semibold leading-tight">
-                  Masuk / Keluar hari ini
+                  Riwayat masuk dan keluar
                 </h3>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onNavigate?.("riwayat")}
+                className="cursor-pointer"
+                onClick={() => navigateTo("riwayat")}
               >
                 <History className="mr-2 size-4" />
                 Lihat riwayat
@@ -573,8 +784,8 @@ export function DashboardPage({
                       colSpan={5}
                       className="text-center text-sm text-muted-foreground py-6"
                     >
-                      Belum ada data pergerakan. Catat barang masuk/keluar untuk
-                      melihat histori terbaru.
+                      Belum ada pergerakan. Catat transaksi untuk melihat
+                      riwayat.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -591,7 +802,7 @@ export function DashboardPage({
           <div className="space-y-2">
             <h3 className="text-lg font-semibold">Aksi cepat</h3>
             <p className="text-sm text-muted-foreground">
-              Mulai pencatatan tanpa meninggalkan dashboard.
+              Pilih menu untuk mulai mencatat.
             </p>
             <div className="grid gap-3">
               {quickActions.map((action) => (
@@ -604,16 +815,21 @@ export function DashboardPage({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Monitor stok</p>
-                <h3 className="text-lg font-semibold">Alert cepat</h3>
+                <h3 className="text-lg font-semibold">Peringatan stok</h3>
               </div>
               <Badge variant="outline" className="rounded-full px-3">
                 {alerts.length} alert
               </Badge>
             </div>
             <div className="space-y-2">
-              {alerts.map((alert) => (
-                <AlertCard key={alert.id} {...alert} />
-              ))}
+              {alerts.length === 0 ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                  Semua stok aman. Stok kosong: {summary.emptyStock.length}{" "}
+                  item.
+                </div>
+              ) : (
+                alerts.map((alert) => <AlertCard key={alert.id} {...alert} />)
+              )}
             </div>
           </div>
         </div>

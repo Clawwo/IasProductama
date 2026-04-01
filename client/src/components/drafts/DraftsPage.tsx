@@ -40,6 +40,7 @@ const API_BASE = (
   (import.meta as { env?: Env }).env?.VITE_API_BASE ?? ""
 ).trim();
 const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
+const DRAFTS_PAGED_URL = `${DRAFTS_URL}/paged`;
 
 type DraftRecord = {
   id: string;
@@ -47,6 +48,14 @@ type DraftRecord = {
   payload: unknown;
   createdAt: string;
   updatedAt: string;
+};
+
+type DraftPagedResponse = {
+  data: DraftRecord[];
+  total: number;
+  page: number;
+  perPage: number;
+  pageCount: number;
 };
 
 type DraftMeta = {
@@ -148,18 +157,51 @@ function parseDraftMeta(draft: DraftRecord): DraftMeta {
 
 export function DraftsPage() {
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
+  const [totalDrafts, setTotalDrafts] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [convectionQuickFilter, setConvectionQuickFilter] = useState<
+    "ALL" | "CONVECTION_INBOUND" | "CONVECTION_OUTBOUND"
+  >("ALL");
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const perPage = 20;
 
   const fetchDrafts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await httpJson<DraftRecord[]>(DRAFTS_URL);
-      setDrafts(data);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("perPage", String(perPage));
+
+      if (filter !== "ALL") {
+        const type =
+          filter === "INBOUND"
+            ? "INBOUND"
+            : filter === "PRODUCTION"
+              ? "PRODUCTION"
+              : "OUTBOUND";
+        params.set("type", type);
+      }
+
+      if (convectionQuickFilter !== "ALL") {
+        params.set("draftKind", convectionQuickFilter);
+      }
+
+      const response = await httpJson<DraftPagedResponse>(
+        `${DRAFTS_PAGED_URL}?${params.toString()}`,
+      );
+
+      setDrafts(response.data);
+      setTotalDrafts(response.total);
+      setPageCount(response.pageCount);
+      if (response.page !== page) {
+        setPage(response.page);
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal memuat draft.";
@@ -167,36 +209,41 @@ export function DraftsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [convectionQuickFilter, filter, page]);
 
   useEffect(() => {
     fetchDrafts();
   }, [fetchDrafts]);
+
+  useEffect(() => {
+    if (!loading && drafts.length === 0 && page > 1) {
+      setPage((prev) => Math.max(1, prev - 1));
+    }
+  }, [drafts.length, loading, page]);
 
   const draftsWithMeta = useMemo(
     () => drafts.map((draft) => ({ draft, meta: parseDraftMeta(draft) })),
     [drafts],
   );
 
-  const filteredDrafts = useMemo(() => {
-    if (filter === "ALL") return draftsWithMeta;
-    return draftsWithMeta.filter(({ meta }) => meta.kind === filter);
-  }, [draftsWithMeta, filter]);
-
-  const deleteDraft = useCallback(async (id: string) => {
-    try {
-      setBusyId(id);
-      await httpJson(`${DRAFTS_URL}/${id}`, { method: "DELETE" });
-      setDrafts((prev) => prev.filter((d) => d.id !== id));
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Gagal menghapus draft.";
-      setError(message);
-    } finally {
-      setBusyId(null);
-      setConfirmId(null);
-    }
-  }, []);
+  const filteredDrafts = draftsWithMeta;
+  const deleteDraft = useCallback(
+    async (id: string) => {
+      try {
+        setBusyId(id);
+        await httpJson(`${DRAFTS_URL}/${id}`, { method: "DELETE" });
+        await fetchDrafts();
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Gagal menghapus draft.";
+        setError(message);
+      } finally {
+        setBusyId(null);
+        setConfirmId(null);
+      }
+    },
+    [fetchDrafts],
+  );
 
   const handleUseDraft = useCallback((draft: DraftRecord, meta: DraftMeta) => {
     sessionStorage.setItem(
@@ -233,8 +280,7 @@ export function DraftsPage() {
             Draft
           </h1>
           <p className="text-sm text-slate-600">
-            Simpan dan lanjutkan pencatatan barang masuk/keluar tanpa mengubah
-            stok.
+            Simpan catatan sementara. Lanjutkan kapan saja tanpa mengubah stok.
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -257,6 +303,16 @@ export function DraftsPage() {
                 icon: Wrench,
               },
               { key: "PRODUCTION" as Filter, label: "Produksi", icon: Factory },
+              {
+                key: "CONVECTION_INBOUND" as Filter,
+                label: "Konveksi Masuk",
+                icon: ArrowDownLeft,
+              },
+              {
+                key: "CONVECTION_OUTBOUND" as Filter,
+                label: "Konveksi Keluar",
+                icon: ArrowUpRight,
+              },
             ] as Array<{
               key: Filter;
               label: string;
@@ -268,7 +324,11 @@ export function DraftsPage() {
               size="sm"
               variant={filter === key ? "default" : "outline"}
               className={cn("gap-2", filter === key && "shadow-sm")}
-              onClick={() => setFilter(key)}
+              onClick={() => {
+                setPage(1);
+                setFilter(key);
+                setConvectionQuickFilter("ALL");
+              }}
             >
               <Icon className="size-4" />
               {label}
@@ -284,11 +344,10 @@ export function DraftsPage() {
           </Button>
         </div>
       </div>
-
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Total draft"
-          value={String(filteredDrafts.length)}
+          value={String(totalDrafts)}
           sub={
             filter === "ALL"
               ? "Semua tipe"
@@ -304,13 +363,13 @@ export function DraftsPage() {
         <SummaryCard
           label="Terbaru"
           value={
-            filteredDrafts[0]
-              ? new Date(filteredDrafts[0].draft.updatedAt).toLocaleString(
+            draftsWithMeta[0]
+              ? new Date(draftsWithMeta[0].draft.updatedAt).toLocaleString(
                   "id-ID",
                 )
               : "-"
           }
-          sub={filteredDrafts[0] ? "Terakhir diubah" : "Belum ada draft"}
+          sub={draftsWithMeta[0] ? "Terakhir diubah" : "Belum ada draft"}
         />
         <SummaryCard
           label="Stok aman"
@@ -337,7 +396,7 @@ export function DraftsPage() {
           <CalendarClock className="size-4" />
           {loading
             ? "Memuat draft..."
-            : `Menampilkan ${filteredDrafts.length} draft`}
+            : `Menampilkan ${drafts.length} dari ${totalDrafts} draft`}
         </div>
         <Table>
           <TableHeader>
@@ -492,6 +551,31 @@ export function DraftsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <span>
+          Halaman <span className="font-semibold text-slate-900">{page}</span>{" "}
+          dari <span className="font-semibold text-slate-900">{pageCount}</span>
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+          >
+            Sebelumnya
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= pageCount || loading}
+            onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+          >
+            Berikutnya
+          </Button>
+        </div>
       </div>
     </div>
   );
