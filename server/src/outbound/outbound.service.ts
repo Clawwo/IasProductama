@@ -30,60 +30,76 @@ export class OutboundService {
   }
 
   async create(dto: CreateOutboundDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const date = new Date(dto.date);
-      const dayStart = startOfDay(date);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
-
-      const sameDayCount = await tx.outbound.count({
-        where: { date: { gte: dayStart, lt: dayEnd } },
-      });
-      const code = formatTxnCode('OUT', dayStart, sameDayCount + 1);
-
-      const outbound = await tx.outbound.create({
-        data: {
-          code,
-          orderer: dto.orderer,
-          date,
-          note: dto.note,
-          lines: {
-            create: dto.lines.map((l) => ({
-              code: l.code,
-              qty: l.qty,
-              note: l.note,
-            })),
+    // Pre-fetch all items OUTSIDE transaction to validate stock early
+    const codes = dto.lines.map((l) => l.code);
+    const [items, raws, products, sameDayCount] = await Promise.all([
+      this.prisma.item.findMany({ where: { code: { in: codes } } }),
+      this.prisma.bahanBaku.findMany({ where: { code: { in: codes } } }),
+      this.prisma.product.findMany({ where: { code: { in: codes } } }),
+      this.prisma.outbound.count({
+        where: {
+          date: {
+            gte: startOfDay(new Date(dto.date)),
+            lt: (() => {
+              const d = startOfDay(new Date(dto.date));
+              d.setDate(d.getDate() + 1);
+              return d;
+            })(),
           },
         },
-        include: { lines: true },
-      });
+      }),
+    ]);
 
-      for (const line of dto.lines) {
-        const existingItem = await tx.item.findUnique({
-          where: { code: line.code },
+    // Create a map for quick lookup and validate stock
+    const itemMap = new Map(items.map((i) => [i.code, { type: 'item', data: i }]));
+    const rawMap = new Map(raws.map((r) => [r.code, { type: 'raw', data: r }]));
+    const productMap = new Map(
+      products.map((p) => [p.code, { type: 'product', data: p }]),
+    );
+
+    // Validate all items exist and have sufficient stock
+    for (const line of dto.lines) {
+      const found = itemMap.get(line.code) ?? rawMap.get(line.code) ?? productMap.get(line.code);
+      if (!found) {
+        throw new BadRequestException(
+          `Kode ${line.code} tidak ditemukan di Item/Bahan Baku/Produk`,
+        );
+      }
+      if ((found.data.stock ?? 0) < line.qty) {
+        throw new BadRequestException(
+          `Stok untuk ${line.code} tidak cukup. Sisa: ${found.data.stock ?? 0}`,
+        );
+      }
+    }
+
+    // Now do minimal transaction - only write operations
+    return this.prisma.$transaction(
+      async (tx) => {
+        const date = new Date(dto.date);
+        const dayStart = startOfDay(date);
+        const code = formatTxnCode('OUT', dayStart, sameDayCount + 1);
+
+        // Create outbound with lines
+        const outbound = await tx.outbound.create({
+          data: {
+            code,
+            orderer: dto.orderer,
+            date,
+            note: dto.note,
+            lines: {
+              create: dto.lines.map((l) => ({
+                code: l.code,
+                qty: l.qty,
+                note: l.note,
+              })),
+            },
+          },
+          include: { lines: true },
         });
-        const existingRaw = existingItem
-          ? null
-          : await tx.bahanBaku.findUnique({ where: { code: line.code } });
-        const existingProduct =
-          existingItem || existingRaw
-            ? null
-            : await tx.product.findUnique({ where: { code: line.code } });
 
-        const target = existingItem ?? existingRaw ?? existingProduct;
-        if (!target) {
-          throw new BadRequestException(
-            `Kode ${line.code} tidak ditemukan di Item/Bahan Baku/Produk`,
-          );
-        }
-
-        if ((target.stock ?? 0) < line.qty) {
-          throw new BadRequestException(
-            `Stok untuk ${line.code} tidak cukup. Sisa: ${target.stock ?? 0}`,
-          );
-        }
-
-        if (existingItem) {
+        // Update all items - separate loops to reduce transaction conflicts
+        const itemUpdates = dto.lines.filter((l) => itemMap.has(l.code));
+        for (const line of itemUpdates) {
           await tx.item.update({
             where: { code: line.code },
             data: {
@@ -94,7 +110,11 @@ export class OutboundService {
               kind: line.kind ?? undefined,
             },
           });
-        } else if (existingRaw) {
+        }
+
+        // Update raw materials
+        const rawUpdates = dto.lines.filter((l) => rawMap.has(l.code));
+        for (const line of rawUpdates) {
           await tx.bahanBaku.update({
             where: { code: line.code },
             data: {
@@ -105,7 +125,11 @@ export class OutboundService {
               kind: line.kind ?? undefined,
             },
           });
-        } else if (existingProduct) {
+        }
+
+        // Update products
+        const productUpdates = dto.lines.filter((l) => productMap.has(l.code));
+        for (const line of productUpdates) {
           await tx.product.update({
             where: { code: line.code },
             data: {
@@ -114,13 +138,15 @@ export class OutboundService {
               category: line.category ?? undefined,
               subCategory: line.subCategory ?? undefined,
               size: line.kind ?? undefined,
-              // color intentionally left untouched
             },
           });
         }
-      }
 
-      return outbound;
-    });
+        return outbound;
+      },
+      {
+        timeout: 120000, // 120 seconds timeout
+      },
+    );
   }
 }

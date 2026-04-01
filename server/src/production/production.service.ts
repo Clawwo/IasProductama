@@ -33,89 +33,64 @@ export class ProductionService {
 
   async create(dto: CreateProductionDto) {
     const prisma = this.prisma as unknown as PrismaClient;
-    return prisma.$transaction(async (tx) => {
-      const date = new Date(dto.date);
-      const dayStart = startOfDay(date);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
+    
+    // Pre-fetch all items and raw materials
+    const rawCodes = dto.rawLines.map((l) => l.code);
+    const date = new Date(dto.date);
+    const dayStart = startOfDay(date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const sameDayCount = await tx.production.count({
+    const [items, raws, sameDayCount] = await Promise.all([
+      this.prisma.item.findMany({ where: { code: { in: rawCodes } } }),
+      this.prisma.bahanBaku.findMany({ where: { code: { in: rawCodes } } }),
+      this.prisma.production.count({
         where: { date: { gte: dayStart, lt: dayEnd } },
-      });
-      const code = formatTxnCode('PROD', dayStart, sameDayCount + 1);
+      }),
+    ]);
 
-      for (const line of dto.rawLines) {
-        const sourceType = line.sourceType ?? 'BAHAN_BAKU';
+    const itemMap = new Map(items.map((i) => [i.code, i]));
+    const rawMap = new Map(raws.map((r) => [r.code, r]));
 
-        if (sourceType === 'ITEM') {
-          const existingItem = await tx.item.findUnique({
-            where: { code: line.code },
-          });
+    // Validate all raw materials exist and have sufficient stock before transaction
+    for (const line of dto.rawLines) {
+      const sourceType = line.sourceType ?? 'BAHAN_BAKU';
+      let found = sourceType === 'ITEM' ? itemMap.get(line.code) : rawMap.get(line.code);
 
-          if (!existingItem) {
-            // Fallback: if mistakenly marked ITEM but lives in bahan baku, try there
-            const fallbackRaw = await tx.bahanBaku.findUnique({
-              where: { code: line.code },
-            });
-            if (!fallbackRaw) {
-              throw new BadRequestException(
-                `Item ${line.code} tidak ditemukan.`,
-              );
-            }
-            if ((fallbackRaw.stock ?? 0) < line.qty) {
-              throw new BadRequestException(
-                `Stok bahan baku ${line.code} tidak cukup. Sisa: ${fallbackRaw.stock ?? 0}`,
-              );
-            }
-            await tx.bahanBaku.update({
-              where: { code: line.code },
-              data: {
-                stock: { decrement: line.qty },
-                name: line.name ?? undefined,
-                category: line.category ?? undefined,
-                subCategory: line.subCategory ?? undefined,
-                kind: line.kind ?? undefined,
-              },
-            });
-            continue;
+      if (!found) {
+        // Try fallback
+        found = sourceType === 'ITEM' ? rawMap.get(line.code) : itemMap.get(line.code);
+      }
+
+      if (!found) {
+        throw new BadRequestException(
+          `${sourceType === 'ITEM' ? 'Item' : 'Bahan baku'} ${line.code} tidak ditemukan.`,
+        );
+      }
+
+      if ((found.stock ?? 0) < line.qty) {
+        throw new BadRequestException(
+          `Stok untuk ${line.code} tidak cukup. Sisa: ${found.stock ?? 0}`,
+        );
+      }
+    }
+
+    return prisma.$transaction(
+      async (tx) => {
+        const code = formatTxnCode('PROD', dayStart, sameDayCount + 1);
+
+        // Decrement raw materials
+        for (const line of dto.rawLines) {
+          const sourceType = line.sourceType ?? 'BAHAN_BAKU';
+          let found = sourceType === 'ITEM' ? itemMap.get(line.code) : rawMap.get(line.code);
+
+          if (!found) {
+            found = sourceType === 'ITEM' ? rawMap.get(line.code) : itemMap.get(line.code);
           }
 
-          if ((existingItem.stock ?? 0) < line.qty) {
-            throw new BadRequestException(
-              `Stok item ${line.code} tidak cukup. Sisa: ${existingItem.stock ?? 0}`,
-            );
-          }
+          const isItem = !(!itemMap.get(line.code) && rawMap.get(line.code));
 
-          await tx.item.update({
-            where: { code: line.code },
-            data: {
-              stock: { decrement: line.qty },
-              name: line.name ?? undefined,
-              category: line.category ?? undefined,
-              subCategory: line.subCategory ?? undefined,
-              kind: line.kind ?? undefined,
-            },
-          });
-        } else {
-          const existingRaw = await tx.bahanBaku.findUnique({
-            where: { code: line.code },
-          });
-
-          if (!existingRaw) {
-            // Fallback: if sourceType omitted/mistaken but item exists, consume item
-            const fallbackItem = await tx.item.findUnique({
-              where: { code: line.code },
-            });
-            if (!fallbackItem) {
-              throw new BadRequestException(
-                `Bahan baku ${line.code} tidak ditemukan.`,
-              );
-            }
-            if ((fallbackItem.stock ?? 0) < line.qty) {
-              throw new BadRequestException(
-                `Stok item ${line.code} tidak cukup. Sisa: ${fallbackItem.stock ?? 0}`,
-              );
-            }
+          if (isItem) {
             await tx.item.update({
               where: { code: line.code },
               data: {
@@ -126,84 +101,81 @@ export class ProductionService {
                 kind: line.kind ?? undefined,
               },
             });
-            continue;
+          } else {
+            await tx.bahanBaku.update({
+              where: { code: line.code },
+              data: {
+                stock: { decrement: line.qty },
+                name: line.name ?? undefined,
+                category: line.category ?? undefined,
+                subCategory: line.subCategory ?? undefined,
+                kind: line.kind ?? undefined,
+              },
+            });
           }
+        }
 
-          if ((existingRaw.stock ?? 0) < line.qty) {
-            throw new BadRequestException(
-              `Stok bahan baku ${line.code} tidak cukup. Sisa: ${existingRaw.stock ?? 0}`,
-            );
-          }
-
-          await tx.bahanBaku.update({
+        // Increment finished products
+        for (const line of dto.finishedLines) {
+          await tx.item.upsert({
             where: { code: line.code },
-            data: {
-              stock: { decrement: line.qty },
+            update: {
+              stock: { increment: line.qty },
               name: line.name ?? undefined,
               category: line.category ?? undefined,
               subCategory: line.subCategory ?? undefined,
               kind: line.kind ?? undefined,
             },
+            create: {
+              code: line.code,
+              name: line.name ?? undefined,
+              category: line.category ?? undefined,
+              subCategory: line.subCategory ?? undefined,
+              kind: line.kind ?? undefined,
+              stock: line.qty,
+            },
           });
         }
-      }
 
-      for (const line of dto.finishedLines) {
-        await tx.item.upsert({
-          where: { code: line.code },
-          update: {
-            stock: { increment: line.qty },
-            name: line.name ?? undefined,
-            category: line.category ?? undefined,
-            subCategory: line.subCategory ?? undefined,
-            kind: line.kind ?? undefined,
+        const production = await tx.production.create({
+          data: {
+            code,
+            date,
+            note: dto.note,
+            rawLines: {
+              create: dto.rawLines.map((l) => ({
+                code: l.code,
+                name: l.name,
+                category: l.category,
+                subCategory: l.subCategory,
+                kind: l.kind,
+                qty: l.qty,
+                note: l.note,
+                sourceType:
+                  (l.sourceType as BomSourceType | undefined) ??
+                  BomSourceType.BAHAN_BAKU,
+              })),
+            },
+            finishedLines: {
+              create: dto.finishedLines.map((l) => ({
+                code: l.code,
+                name: l.name,
+                category: l.category,
+                subCategory: l.subCategory,
+                kind: l.kind,
+                qty: l.qty,
+                note: l.note,
+              })),
+            },
           },
-          create: {
-            code: line.code,
-            name: line.name ?? undefined,
-            category: line.category ?? undefined,
-            subCategory: line.subCategory ?? undefined,
-            kind: line.kind ?? undefined,
-            stock: line.qty,
-          },
+          include: { rawLines: true, finishedLines: true },
         });
-      }
 
-      const production = await tx.production.create({
-        data: {
-          code,
-          date,
-          note: dto.note,
-          rawLines: {
-            create: dto.rawLines.map((l) => ({
-              code: l.code,
-              name: l.name,
-              category: l.category,
-              subCategory: l.subCategory,
-              kind: l.kind,
-              qty: l.qty,
-              note: l.note,
-              sourceType:
-                (l.sourceType as BomSourceType | undefined) ??
-                BomSourceType.BAHAN_BAKU,
-            })),
-          },
-          finishedLines: {
-            create: dto.finishedLines.map((l) => ({
-              code: l.code,
-              name: l.name,
-              category: l.category,
-              subCategory: l.subCategory,
-              kind: l.kind,
-              qty: l.qty,
-              note: l.note,
-            })),
-          },
-        },
-        include: { rawLines: true, finishedLines: true },
-      });
-
-      return production;
-    });
+        return production;
+      },
+      {
+        timeout: 120000, // 120 seconds timeout
+      },
+    );
   }
 }

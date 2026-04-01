@@ -30,40 +30,47 @@ export class InboundService {
   }
 
   async create(dto: CreateInboundDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const date = new Date(dto.date);
-      const dayStart = startOfDay(date);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
+    // Get count before transaction to reduce transaction query count
+    const date = new Date(dto.date);
+    const dayStart = startOfDay(date);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const sameDayCount = await tx.inbound.count({
-        where: { date: { gte: dayStart, lt: dayEnd } },
-      });
-      const code = formatTxnCode('IN', dayStart, sameDayCount + 1);
+    const sameDayCount = await this.prisma.inbound.count({
+      where: { date: { gte: dayStart, lt: dayEnd } },
+    });
 
-      const inbound = await tx.inbound.create({
-        data: {
-          code,
-          vendor: dto.vendor,
-          date,
-          note: dto.note,
-          lines: {
-            create: dto.lines.map((l) => ({
-              code: l.code,
-              qty: l.qty,
-              note: l.note,
-            })),
+    return this.prisma.$transaction(
+      async (tx) => {
+        const code = formatTxnCode('IN', dayStart, sameDayCount + 1);
+
+        const inbound = await tx.inbound.create({
+          data: {
+            code,
+            vendor: dto.vendor,
+            date,
+            note: dto.note,
+            lines: {
+              create: dto.lines.map((l) => ({
+                code: l.code,
+                qty: l.qty,
+                note: l.note,
+              })),
+            },
           },
-        },
-        include: { lines: true },
-      });
+          include: { lines: true },
+        });
 
-      for (const line of dto.lines) {
-        const isRaw = (line.category ?? '')
-          .toLowerCase()
-          .startsWith('bahan baku');
+        // Separate lines by category for batch processing
+        const rawItems = dto.lines.filter((l) =>
+          (l.category ?? '').toLowerCase().startsWith('bahan baku'),
+        );
+        const regularItems = dto.lines.filter(
+          (l) => !(l.category ?? '').toLowerCase().startsWith('bahan baku'),
+        );
 
-        if (isRaw) {
+        // Batch upsert raw materials
+        for (const line of rawItems) {
           await tx.bahanBaku.upsert({
             where: { code: line.code },
             update: {
@@ -82,7 +89,10 @@ export class InboundService {
               stock: line.qty,
             },
           });
-        } else {
+        }
+
+        // Batch upsert regular items
+        for (const line of regularItems) {
           await tx.item.upsert({
             where: { code: line.code },
             update: {
@@ -102,9 +112,12 @@ export class InboundService {
             },
           });
         }
-      }
 
-      return inbound;
-    });
+        return inbound;
+      },
+      {
+        timeout: 120000, // 120 seconds timeout for transaction
+      },
+    );
   }
 }

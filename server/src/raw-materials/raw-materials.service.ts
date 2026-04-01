@@ -85,108 +85,128 @@ export class RawMaterialsService {
   }
 
   async createOutbound(dto: CreateRawMaterialOutboundDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const date = new Date(dto.date);
-      const dayStart = startOfDay(date);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1);
+    // Pre-fetch all materials
+    const codes = dto.lines.map((l) => l.code);
+    const materials = await this.prisma.bahanBaku.findMany({
+      where: { code: { in: codes } },
+    });
 
-      const sameDayCount = await tx.rawMaterialOutbound.count({
-        where: { date: { gte: dayStart, lt: dayEnd } },
-      });
-      const code = formatTxnCode('RM-OUT', dayStart, sameDayCount + 1);
+    const materialMap = new Map(materials.map((m) => [m.code, m]));
 
-      for (const line of dto.lines) {
-        const existing = await tx.bahanBaku.findUnique({
-          where: { code: line.code },
-        });
-        if (!existing) {
-          throw new BadRequestException(
-            `Bahan baku ${line.code} tidak ditemukan.`,
-          );
-        }
-        if ((existing.stock ?? 0) < line.qty) {
-          throw new BadRequestException(
-            `Stok bahan baku ${line.code} tidak cukup. Sisa: ${existing.stock ?? 0}`,
-          );
-        }
-
-        await tx.bahanBaku.update({
-          where: { code: line.code },
-          data: {
-            stock: { decrement: line.qty },
-            name: line.name ?? undefined,
-            category: line.category ?? undefined,
-            subCategory: line.subCategory ?? undefined,
-            kind: line.kind ?? undefined,
-          },
-        });
+    // Validate all materials exist and have sufficient stock before transaction
+    for (const line of dto.lines) {
+      const material = materialMap.get(line.code);
+      if (!material) {
+        throw new BadRequestException(
+          `Bahan baku ${line.code} tidak ditemukan.`,
+        );
       }
+      if ((material.stock ?? 0) < line.qty) {
+        throw new BadRequestException(
+          `Stok bahan baku ${line.code} tidak cukup. Sisa: ${material.stock ?? 0}`,
+        );
+      }
+    }
 
-      return tx.rawMaterialOutbound.create({
-        data: {
-          code,
-          artisan: dto.artisan,
-          date,
-          note: dto.note,
-          lines: {
-            create: dto.lines.map((line) => ({
-              materialCode: line.code,
-              materialName: line.name ?? undefined,
+    return this.prisma.$transaction(
+      async (tx) => {
+        const date = new Date(dto.date);
+        const dayStart = startOfDay(date);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
+
+        const sameDayCount = await tx.rawMaterialOutbound.count({
+          where: { date: { gte: dayStart, lt: dayEnd } },
+        });
+        const code = formatTxnCode('RM-OUT', dayStart, sameDayCount + 1);
+
+        // Update all materials
+        for (const line of dto.lines) {
+          await tx.bahanBaku.update({
+            where: { code: line.code },
+            data: {
+              stock: { decrement: line.qty },
+              name: line.name ?? undefined,
               category: line.category ?? undefined,
               subCategory: line.subCategory ?? undefined,
               kind: line.kind ?? undefined,
-              batchCode: line.batchCode,
-              qty: line.qty,
-              note: line.note,
-            })),
+            },
+          });
+        }
+
+        return tx.rawMaterialOutbound.create({
+          data: {
+            code,
+            artisan: dto.artisan,
+            date,
+            note: dto.note,
+            lines: {
+              create: dto.lines.map((line) => ({
+                materialCode: line.code,
+                materialName: line.name ?? undefined,
+                category: line.category ?? undefined,
+                subCategory: line.subCategory ?? undefined,
+                kind: line.kind ?? undefined,
+                batchCode: line.batchCode,
+                qty: line.qty,
+                note: line.note,
+              })),
+            },
           },
-        },
-        include: { lines: { orderBy: { createdAt: 'asc' } } },
-      });
-    });
+          include: { lines: { orderBy: { createdAt: 'asc' } } },
+        });
+      },
+      {
+        timeout: 120000, // 120 seconds timeout
+      },
+    );
   }
 
   async receiveOutboundLine(
     lineId: string,
     dto: ReceiveRawMaterialOutboundLineDto,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      const line = await tx.rawMaterialOutboundLine.findUnique({
-        where: { id: lineId },
-      });
-
-      if (!line) {
-        throw new NotFoundException('Tracking bahan baku tidak ditemukan');
-      }
-
-      if (line.status === 'RECEIVED') {
-        return line;
-      }
-
-      const receivedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
-
-      const updated = await tx.rawMaterialOutboundLine.update({
-        where: { id: lineId },
-        data: {
-          status: 'RECEIVED',
-          receivedAt,
-          receivedBy: dto.receivedBy,
-        },
-      });
-
-      const remaining = await tx.rawMaterialOutboundLine.count({
-        where: { outboundId: line.outboundId, status: 'OUT' },
-      });
-
-      if (remaining === 0) {
-        await tx.rawMaterialOutbound.update({
-          where: { id: line.outboundId },
-          data: { status: 'RECEIVED', receivedAt },
+    return this.prisma.$transaction(
+      async (tx) => {
+        const line = await tx.rawMaterialOutboundLine.findUnique({
+          where: { id: lineId },
         });
-      }
 
-      return updated;
-    });
+        if (!line) {
+          throw new NotFoundException('Tracking bahan baku tidak ditemukan');
+        }
+
+        if (line.status === 'RECEIVED') {
+          return line;
+        }
+
+        const receivedAt = dto.receivedAt ? new Date(dto.receivedAt) : new Date();
+
+        const updated = await tx.rawMaterialOutboundLine.update({
+          where: { id: lineId },
+          data: {
+            status: 'RECEIVED',
+            receivedAt,
+            receivedBy: dto.receivedBy,
+          },
+        });
+
+        const remaining = await tx.rawMaterialOutboundLine.count({
+          where: { outboundId: line.outboundId, status: 'OUT' },
+        });
+
+        if (remaining === 0) {
+          await tx.rawMaterialOutbound.update({
+            where: { id: line.outboundId },
+            data: { status: 'RECEIVED', receivedAt },
+          });
+        }
+
+        return updated;
+      },
+      {
+        timeout: 120000, // 120 seconds timeout
+      },
+    );
   }
 }
