@@ -60,6 +60,7 @@ import * as XLSX from "xlsx";
 import {
   inferKind,
   inventoryItemsWithKind,
+  type InventoryItem,
   type InventoryItemWithKind,
 } from "./items";
 
@@ -82,6 +83,22 @@ type RemoteItem = {
   stock: number;
   createdAt?: string;
   updatedAt?: string;
+};
+
+const allowedSubCategories: InventoryItem["subCategory"][] = [
+  "SNARE",
+  "TOM",
+  "DRUMBAND",
+  "HTS",
+  "SEMI",
+];
+
+const normalizeSubCategory = (
+  value?: string,
+): InventoryItem["subCategory"] => {
+  if (!value) return undefined;
+  const upper = value.trim().toUpperCase();
+  return allowedSubCategories.find((sub) => sub === upper);
 };
 
 type InventoryListItem = InventoryItemWithKind & {
@@ -205,7 +222,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           code,
           name: it?.name ?? base?.name ?? "",
           category: it?.category ?? base?.category ?? "",
-          subCategory: it?.subCategory ?? base?.subCategory,
+          subCategory:
+            normalizeSubCategory(it?.subCategory) ?? base?.subCategory,
           stock: it?.stock ?? base?.stock ?? 0,
         } as InventoryListItem;
         return {
@@ -598,7 +616,9 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           code: savedItem.code ?? payload.code,
           name: savedItem.name ?? payload.name,
           category: savedItem.category ?? payload.category,
-          subCategory: savedItem.subCategory ?? existing?.subCategory,
+          subCategory:
+            normalizeSubCategory(savedItem.subCategory) ??
+            existing?.subCategory,
           stock:
             typeof savedItem.stock === "number"
               ? savedItem.stock
