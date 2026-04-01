@@ -748,8 +748,7 @@ export function ProductionPage() {
                 Catat Produksi
               </h1>
               <p className="text-sm text-slate-600">
-                Kurangi stok bahan baku dan tambah stok barang jadi dalam satu
-                langkah.
+                Catat produksi: bahan baku berkurang, barang jadi bertambah.
               </p>
             </div>
           </div>

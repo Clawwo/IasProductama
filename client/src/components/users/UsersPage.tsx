@@ -183,12 +183,12 @@ export function UsersPage() {
             Data Pengguna
           </h1>
           <p className="text-sm text-slate-600">
-            Hanya admin yang dapat melihat daftar pengguna dan perannya.
+            Halaman ini hanya untuk admin.
           </p>
         </div>
         <div className="bg-slate-50 text-sm text-slate-700 flex items-center gap-2 rounded-lg border px-3 py-2">
           <Shield className="size-4" />
-          Admin-only
+          Khusus admin
         </div>
       </header>
 

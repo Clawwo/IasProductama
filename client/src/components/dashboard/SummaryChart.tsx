@@ -14,12 +14,12 @@ export function SummaryChart({ data }: { data: ChartPoint[] }) {
       inbound: acc.inbound + point.inbound,
       outbound: acc.outbound + point.outbound,
     }),
-    { inbound: 0, outbound: 0 }
+    { inbound: 0, outbound: 0 },
   );
 
   const maxValue = Math.max(
     1,
-    ...data.map((point) => Math.max(point.inbound, point.outbound))
+    ...data.map((point) => Math.max(point.inbound, point.outbound)),
   );
 
   return (
@@ -58,42 +58,50 @@ export function SummaryChart({ data }: { data: ChartPoint[] }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-2">
-        {data.map((point) => {
-          const inboundPct =
-            point.inbound === 0
-              ? 0
-              : Math.min(Math.max((point.inbound / maxValue) * 100, 12), 100);
-          const outboundPct =
-            point.outbound === 0
-              ? 0
-              : Math.min(Math.max((point.outbound / maxValue) * 100, 12), 100);
+      <div className="overflow-x-auto">
+        <div className="grid min-w-140 grid-cols-7 gap-2">
+          {data.map((point) => {
+            const inboundPct =
+              point.inbound === 0
+                ? 0
+                : Math.min(Math.max((point.inbound / maxValue) * 100, 12), 100);
+            const outboundPct =
+              point.outbound === 0
+                ? 0
+                : Math.min(
+                    Math.max((point.outbound / maxValue) * 100, 12),
+                    100,
+                  );
 
-          return (
-            <div key={point.label} className="flex flex-col items-center gap-2">
-              <div className="flex h-28 w-full items-end gap-1 rounded-lg bg-slate-50 p-1">
-                <span
-                  className="w-1/2 rounded-sm bg-emerald-500/80"
-                  style={{ height: `${inboundPct}%` }}
-                  title={`Masuk: ${point.inbound} pcs`}
-                />
-                <span
-                  className="w-1/2 rounded-sm bg-orange-500/80"
-                  style={{ height: `${outboundPct}%` }}
-                  title={`Keluar: ${point.outbound} pcs`}
-                />
+            return (
+              <div
+                key={point.label}
+                className="flex flex-col items-center gap-2"
+              >
+                <div className="flex h-28 w-full items-end gap-1 rounded-lg bg-slate-50 p-1">
+                  <span
+                    className="w-1/2 rounded-sm bg-emerald-500/80"
+                    style={{ height: `${inboundPct}%` }}
+                    title={`Masuk: ${point.inbound} pcs`}
+                  />
+                  <span
+                    className="w-1/2 rounded-sm bg-orange-500/80"
+                    style={{ height: `${outboundPct}%` }}
+                    title={`Keluar: ${point.outbound} pcs`}
+                  />
+                </div>
+                <div className="text-center">
+                  <p className="text-xs font-semibold leading-tight">
+                    {point.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    {point.inbound} / {point.outbound}
+                  </p>
+                </div>
               </div>
-              <div className="text-center">
-                <p className="text-xs font-semibold leading-tight">
-                  {point.label}
-                </p>
-                <p className="text-[11px] text-muted-foreground leading-tight">
-                  {point.inbound} / {point.outbound}
-                </p>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
