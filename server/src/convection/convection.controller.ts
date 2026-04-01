@@ -9,6 +9,7 @@ import {
   Query,
   Req,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator.js';
@@ -34,7 +35,16 @@ export class ConvectionController {
 
   @Roles(Role.ADMIN, Role.PETUGAS)
   @Post('items')
-  createItem(@Body() dto: CreateConvectionItemDto) {
+  createItem(
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        transform: true,
+      }),
+    )
+    dto: CreateConvectionItemDto,
+  ) {
     return this.convectionService.createItem(dto);
   }
 
@@ -42,7 +52,14 @@ export class ConvectionController {
   @Patch('items/:code')
   updateItem(
     @Param('code') code: string,
-    @Body() dto: UpdateConvectionItemDto,
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        transform: true,
+      }),
+    )
+    dto: UpdateConvectionItemDto,
   ) {
     return this.convectionService.updateItem(code, dto);
   }
