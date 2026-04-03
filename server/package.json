@@ -29,7 +29,9 @@
     "convection:import:detailed": "tsx scripts/import-convection-detailed.ts",
     "convection:report:pcs": "tsx scripts/report-convection-pcs.ts",
     "convection:remap:legacy": "tsx scripts/remap-convection-legacy-codes.ts",
-    "convection:sync:rekap": "tsx scripts/sync-convection-rekap-cleanup.ts"
+    "convection:sync:rekap": "tsx scripts/sync-convection-rekap-cleanup.ts",
+    "stock:update:gudang-wetan:april": "tsx scripts/update-stock-gudang-wetan-april.ts",
+    "stock:update:gudang-kulon": "tsx scripts/update-stock-gudang-kulon.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

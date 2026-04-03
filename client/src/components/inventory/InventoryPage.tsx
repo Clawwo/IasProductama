@@ -93,12 +93,20 @@ const allowedSubCategories: InventoryItem["subCategory"][] = [
   "SEMI",
 ];
 
-const normalizeSubCategory = (
-  value?: string,
-): InventoryItem["subCategory"] => {
+const normalizeSubCategory = (value?: string): InventoryItem["subCategory"] => {
   if (!value) return undefined;
   const upper = value.trim().toUpperCase();
   return allowedSubCategories.find((sub) => sub === upper);
+};
+
+const normalizeCategoryForFilter = (value?: string): string => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  const upper = trimmed.toUpperCase();
+  if (upper === "PACK" || upper === "KARDUS PACKING") {
+    return "Kardus Packing";
+  }
+  return trimmed;
 };
 
 type InventoryListItem = InventoryItemWithKind & {
@@ -261,7 +269,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   const categories = useMemo(() => {
     const set = new Set<string>();
     items.forEach((item) => {
-      const cat = (item.category || "").trim();
+      const cat = normalizeCategoryForFilter(item.category);
       if (cat) set.add(cat);
     });
     return Array.from(set).sort();
@@ -280,7 +288,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
         item.code.toLowerCase().includes(term);
       const matchCategory =
         selectedCategories.length === 0 ||
-        selectedCategories.includes(item.category);
+        selectedCategories.includes(normalizeCategoryForFilter(item.category));
       const status = getStatus(item.stock);
       const matchStatus = statusFilter === "all" || status === statusFilter;
       const isRing = item.kind === "RING";
