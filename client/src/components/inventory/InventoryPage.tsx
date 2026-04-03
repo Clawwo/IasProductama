@@ -122,7 +122,13 @@ type Toast = {
   message?: string;
 };
 
-export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
+export function InventoryPage({
+  readOnly = false,
+  canReadRawMaterials = false,
+}: {
+  readOnly?: boolean;
+  canReadRawMaterials?: boolean;
+}) {
   const [items, setItems] = useState<InventoryListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,9 +185,19 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setLoading(true);
     setError(null);
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<RemoteItem[]>([]);
       const [itemsData, rawData, productsData] = await Promise.all([
         httpJson<RemoteItem[]>(ITEMS_URL),
-        httpJson<RemoteItem[]>(RAW_URL),
+        rawPromise,
         httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
 
@@ -252,7 +268,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [pushToast]);
+  }, [canReadRawMaterials, pushToast]);
 
   useEffect(() => {
     fetchItems();

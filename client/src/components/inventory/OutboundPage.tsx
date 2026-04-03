@@ -125,7 +125,11 @@ type Toast = {
   message?: string;
 };
 
-export function OutboundPage() {
+export function OutboundPage({
+  canReadRawMaterials = false,
+}: {
+  canReadRawMaterials?: boolean;
+}) {
   const [orderer, setOrderer] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -176,9 +180,19 @@ export function OutboundPage() {
 
   const fetchItems = useCallback(async () => {
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<RemoteItem[]>([]);
       const [itemsData, rawData, prodData] = await Promise.all([
         httpJson<RemoteItem[]>(ITEMS_URL),
-        httpJson<RemoteItem[]>(RAW_URL),
+        rawPromise,
         httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
 
@@ -190,7 +204,7 @@ export function OutboundPage() {
         err instanceof Error ? err.message : "Tidak bisa mengambil data stok.";
       pushToast("destructive", "Gagal memuat stok", message);
     }
-  }, []);
+  }, [canReadRawMaterials]);
 
   useEffect(() => {
     fetchItems();

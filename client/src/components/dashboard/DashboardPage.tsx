@@ -273,8 +273,10 @@ function HeroStrip({
 
 export function DashboardPage({
   onNavigate,
+  canReadRawMaterials = false,
 }: {
   onNavigate?: (key: AppNavKey) => void;
+  canReadRawMaterials?: boolean;
 }) {
   type ItemApi = {
     code: string;
@@ -371,9 +373,20 @@ export function DashboardPage({
     setLoadingStock(true);
     setStockError(null);
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<ItemApi[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<ItemApi[]>([]);
+
       const [itemsData, rawData, productsData] = await Promise.all([
         httpJson<ItemApi[]>(ITEMS_URL),
-        httpJson<ItemApi[]>(RAW_URL),
+        rawPromise,
         httpJson<ItemApi[]>(PRODUCTS_URL),
       ]);
 
@@ -402,7 +415,7 @@ export function DashboardPage({
     } finally {
       setLoadingStock(false);
     }
-  }, []);
+  }, [canReadRawMaterials]);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
