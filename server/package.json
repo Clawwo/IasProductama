@@ -32,6 +32,7 @@
     "convection:sync:rekap": "tsx scripts/sync-convection-rekap-cleanup.ts",
     "stock:update:gudang-wetan:april": "tsx scripts/update-stock-gudang-wetan-april.ts",
     "stock:update:gudang-kulon": "tsx scripts/update-stock-gudang-kulon.ts"
+    "raw-materials:sync:items": "tsx scripts/sync-bahan-baku-from-items.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
