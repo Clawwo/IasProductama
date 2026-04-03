@@ -14,14 +14,16 @@ import { Role } from '@prisma/client';
 import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { RawMaterialsService } from './raw-materials.service.js';
+import { RawMaterialsAccessGuard } from './raw-materials-access.guard.js';
 import { CreateRawMaterialDto } from './dto/create-raw-material.dto.js';
+import { CreateRawMaterialInboundDto } from './dto/create-raw-material-inbound.dto.js';
 import { CreateRawMaterialOutboundDto } from './dto/create-raw-material-outbound.dto.js';
 import { ReceiveRawMaterialOutboundLineDto } from './dto/receive-raw-material-outbound-line.dto.js';
 import { UpdateRawMaterialDto } from './dto/update-raw-material.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, RawMaterialsAccessGuard)
 @Controller('raw-materials')
 export class RawMaterialsController {
   constructor(private readonly rawMaterialsService: RawMaterialsService) {}
@@ -30,6 +32,25 @@ export class RawMaterialsController {
   @Get()
   findAll() {
     return this.rawMaterialsService.findAll();
+  }
+
+  @Roles(Role.ADMIN, Role.PETUGAS, Role.PELIHAT)
+  @Get('inbound')
+  findInbound(@Query('limit') limit?: string) {
+    const parsed = Number(limit);
+    return this.rawMaterialsService.findInboundRecent(
+      Number.isFinite(parsed) ? parsed : undefined,
+    );
+  }
+
+  @Roles(Role.ADMIN, Role.PETUGAS)
+  @Post('inbound')
+  @UseGuards(JwtAuthGuard)
+  createInbound(
+    @Body() dto: CreateRawMaterialInboundDto,
+    @Req() req: { user?: JwtPayload },
+  ) {
+    return this.rawMaterialsService.createInbound(dto, req.user?.sub);
   }
 
   @Roles(Role.ADMIN, Role.PETUGAS, Role.PELIHAT)

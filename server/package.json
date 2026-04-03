@@ -29,7 +29,8 @@
     "convection:import:detailed": "tsx scripts/import-convection-detailed.ts",
     "convection:report:pcs": "tsx scripts/report-convection-pcs.ts",
     "convection:remap:legacy": "tsx scripts/remap-convection-legacy-codes.ts",
-    "convection:sync:rekap": "tsx scripts/sync-convection-rekap-cleanup.ts"
+    "convection:sync:rekap": "tsx scripts/sync-convection-rekap-cleanup.ts",
+    "raw-materials:sync:items": "tsx scripts/sync-bahan-baku-from-items.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

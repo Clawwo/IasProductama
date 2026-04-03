@@ -258,6 +258,8 @@ export function DraftsPage() {
       window.location.hash = "#konveksi-masuk";
     } else if (meta.draftKind === "CONVECTION_OUTBOUND") {
       window.location.hash = "#konveksi-keluar";
+    } else if (meta.draftKind === "INBOUND_RAW") {
+      window.location.hash = "#bahan-masuk";
     } else if (meta.kind === "INBOUND") {
       window.location.hash = "#masuk";
     } else if (meta.kind === "OUTBOUND_RAW") {
