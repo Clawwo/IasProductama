@@ -2923,6 +2923,18 @@ export const inventoryItems: InventoryItem[] = [
     category: "Pack",
   },
   {
+    code: "PACK-GEN-00-35X43X85",
+    name: "KARDUS (35x43x85)",
+    stock: 5,
+    category: "Pack",
+  },
+  {
+    code: "PACK-GEN-00-BIASA",
+    name: "KARDUS Packing Biasa",
+    stock: 5,
+    category: "Pack",
+  },
+  {
     code: "PACK-GEN-10-30X30X66",
     name: "Snare 10'' isi 4 (30x30x66)",
     stock: 5,
@@ -3640,7 +3652,7 @@ export const inventoryItems: InventoryItem[] = [
 
 // Infer a stable InventoryKind from a code/category combination.
 export function inferKind(
-  item: Pick<InventoryItem, "code" | "category">
+  item: Pick<InventoryItem, "code" | "category">,
 ): InventoryKind {
   const prefix = item.code.split("-")[0]?.toUpperCase();
   switch (prefix) {
