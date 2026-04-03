@@ -816,8 +816,7 @@ export function InboundPage() {
                 Barang Masuk
               </h1>
               <p className="text-sm text-slate-600">
-                Catat penerimaan stok baru atau retur vendor dengan detail yang
-                terstruktur.
+                Catat barang masuk dari vendor atau retur.
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">

@@ -8,7 +8,7 @@ import {
   Min,
 } from 'class-validator';
 
-const ALLOWED_CONVECTION_UNITS = ['ONS', 'KG', 'METER', 'PCS', 'SET'] as const;
+const ALLOWED_CONVECTION_UNITS = ['ONS', 'KG', 'PCS', 'SET'] as const;
 
 function normalizeUnitInput(value: unknown) {
   const cleaned = String(value ?? '')
@@ -36,6 +36,10 @@ export class CreateConvectionItemDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  subCategory?: string;
 
   @IsOptional()
   @Transform(({ value }) => normalizeUnitInput(value))

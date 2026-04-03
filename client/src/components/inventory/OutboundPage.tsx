@@ -867,8 +867,7 @@ export function OutboundPage() {
                 Barang Keluar
               </h1>
               <p className="text-sm text-slate-600">
-                Catat pengeluaran stok untuk pengiriman, peminjaman, atau
-                permintaan lainnya.
+                Catat barang keluar untuk pengiriman atau peminjaman.
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
