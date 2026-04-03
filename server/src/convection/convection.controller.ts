@@ -16,12 +16,13 @@ import { RolesGuard } from '../auth/roles.guard.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import type { JwtPayload } from '../auth/strategies/jwt.strategy.js';
 import { ConvectionService } from './convection.service.js';
+import { ConvectionAccessGuard } from './convection-access.guard.js';
 import { CreateConvectionItemDto } from './dto/create-convection-item.dto.js';
 import { CreateConvectionInboundDto } from './dto/create-convection-inbound.dto.js';
 import { CreateConvectionOutboundDto } from './dto/create-convection-outbound.dto.js';
 import { UpdateConvectionItemDto } from './dto/update-convection-item.dto.js';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ConvectionAccessGuard)
 @Controller('convection')
 export class ConvectionController {
   constructor(private readonly convectionService: ConvectionService) {}

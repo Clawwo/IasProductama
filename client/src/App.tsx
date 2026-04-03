@@ -12,6 +12,8 @@ import {
 import { DraftsPage } from "./components/drafts/DraftsPage";
 import { RiwayatPage } from "./components/history/RiwayatPage";
 import { ProductionPage } from "./components/production/ProductionPage";
+import { RawMaterialsPage } from "./components/raw/RawMaterialsPage";
+import { RawMaterialsInboundPage } from "./components/raw/RawMaterialsInboundPage";
 import { RawMaterialsOutboundTrackingPage } from "./components/raw/RawMaterialsOutboundTrackingPage";
 import {
   Sidebar,
@@ -51,7 +53,6 @@ import {
   LayoutDashboard,
   Box,
   Factory,
-  PackageCheck,
   Users as UsersIcon,
   Shirt,
 } from "lucide-react";
@@ -66,6 +67,8 @@ type View =
   | "inventory"
   | "masuk"
   | "keluar"
+  | "bahan"
+  | "bahan-masuk"
   | "bahan-keluar"
   | "produksi"
   | "drafts"
@@ -75,17 +78,46 @@ type View =
   | "konveksi-masuk"
   | "konveksi-keluar";
 
+const RAW_MATERIAL_ALLOWED_EMAILS = new Set([
+  "gudangkulon@gmail.com",
+  "admin@gmail.com",
+]);
+
+const CONVECTION_BLOCKED_EMAILS = new Set(["gudangkulon@gmail.com"]);
+
+function canAccessRawMaterials(user?: Pick<User, "email" | "role"> | null) {
+  if (!user) return false;
+  if (user.role === "ADMIN") return true;
+  const email = (user.email ?? "").trim().toLowerCase();
+  return RAW_MATERIAL_ALLOWED_EMAILS.has(email);
+}
+
+function canAccessConvection(user?: Pick<User, "email" | "role"> | null) {
+  if (!user) return false;
+  if (user.role === "ADMIN") return true;
+  const email = (user.email ?? "").trim().toLowerCase();
+  return !CONVECTION_BLOCKED_EMAILS.has(email);
+}
+
 function SidebarNav({
   active = "dashboard",
   onNavigate,
   userRole,
+  userEmail,
 }: {
   active?: AppNavKey;
   onNavigate?: (key: AppNavKey) => void;
   userRole?: string;
+  userEmail?: string;
 }) {
   const isAdmin = userRole === "ADMIN";
   const isViewer = userRole === "PELIHAT";
+  const rawAllowed =
+    isAdmin ||
+    RAW_MATERIAL_ALLOWED_EMAILS.has((userEmail ?? "").trim().toLowerCase());
+  const convectionAllowed =
+    isAdmin ||
+    !CONVECTION_BLOCKED_EMAILS.has((userEmail ?? "").trim().toLowerCase());
 
   const items: Array<{
     key: AppNavKey;
@@ -112,12 +144,6 @@ function SidebarNav({
       label: "Barang Keluar",
       icon: ArrowUpRight,
       href: "#keluar",
-    },
-    {
-      key: "bahan-keluar",
-      label: "Bahan Baku Keluar",
-      icon: PackageCheck,
-      href: "#bahan-keluar",
     },
     {
       key: "produksi",
@@ -159,6 +185,32 @@ function SidebarNav({
       label: "Konveksi Keluar",
       icon: ArrowUpRight,
       href: "#konveksi-keluar",
+    },
+  ];
+
+  const rawMaterialItems: Array<{
+    key: AppNavKey;
+    label: string;
+    icon: typeof LayoutDashboard;
+    href: string;
+  }> = [
+    {
+      key: "bahan",
+      label: "Stok Bahan Baku",
+      icon: Box,
+      href: "#bahan",
+    },
+    {
+      key: "bahan-masuk",
+      label: "Bahan Baku Masuk",
+      icon: ArrowDownLeft,
+      href: "#bahan-masuk",
+    },
+    {
+      key: "bahan-keluar",
+      label: "Bahan Baku Keluar",
+      icon: ArrowUpRight,
+      href: "#bahan-keluar",
     },
   ];
 
@@ -216,32 +268,62 @@ function SidebarNav({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Konveksi</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {convectionItems.map((item) => (
-                <SidebarMenuItem key={item.key}>
-                  <SidebarMenuButton
-                    isActive={active === item.key}
-                    asChild
-                    onClick={(e) => {
-                      if (onNavigate) {
-                        e.preventDefault();
-                        onNavigate(item.key);
-                      }
-                    }}
-                  >
-                    <a href={item.href} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {rawAllowed ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>Bahan Baku</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {rawMaterialItems.map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={active === item.key}
+                      asChild
+                      onClick={(e) => {
+                        if (onNavigate) {
+                          e.preventDefault();
+                          onNavigate(item.key);
+                        }
+                      }}
+                    >
+                      <a href={item.href} className="flex items-center gap-2">
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+        {convectionAllowed ? (
+          <SidebarGroup>
+            <SidebarGroupLabel>Konveksi</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {convectionItems.map((item) => (
+                  <SidebarMenuItem key={item.key}>
+                    <SidebarMenuButton
+                      isActive={active === item.key}
+                      asChild
+                      onClick={(e) => {
+                        if (onNavigate) {
+                          e.preventDefault();
+                          onNavigate(item.key);
+                        }
+                      }}
+                    >
+                      <a href={item.href} className="flex items-center gap-2">
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
       <SidebarSeparator />
       <SidebarFooter>
@@ -282,7 +364,12 @@ function Shell({
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
-        <SidebarNav active={view} onNavigate={onNavigate} userRole={userRole} />
+        <SidebarNav
+          active={view}
+          onNavigate={onNavigate}
+          userRole={userRole}
+          userEmail={userEmail}
+        />
         <SidebarInset className="flex-1">
           <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white/90 px-4 py-3 backdrop-blur md:px-6">
             <SidebarTrigger />
@@ -319,21 +406,34 @@ function Shell({
   );
 }
 
-function resolveViewFromHash(hash: string, role?: string): View {
+function resolveViewFromHash(hash: string, user?: User | null): View {
   const key = (hash || "#dashboard").replace(/^#/, "");
+  const role = user?.role;
+  const rawAllowed = canAccessRawMaterials(user);
+  const convectionAllowed = canAccessConvection(user);
   const allowed: Record<string, View> = {
     dashboard: "dashboard",
     inventory: "inventory",
     masuk: role === "PELIHAT" ? "dashboard" : "masuk",
     keluar: role === "PELIHAT" ? "dashboard" : "keluar",
-    "bahan-keluar": role === "PELIHAT" ? "dashboard" : "bahan-keluar",
+    bahan: rawAllowed ? "bahan" : "dashboard",
+    "bahan-masuk": rawAllowed ? "bahan-masuk" : "dashboard",
+    "bahan-keluar": rawAllowed ? "bahan-keluar" : "dashboard",
     produksi: role === "PELIHAT" ? "dashboard" : "produksi",
     drafts: role === "PELIHAT" ? "dashboard" : "drafts",
     riwayat: "riwayat",
     users: role === "ADMIN" ? "users" : "dashboard",
-    konveksi: "konveksi",
-    "konveksi-masuk": role === "PELIHAT" ? "konveksi" : "konveksi-masuk",
-    "konveksi-keluar": role === "PELIHAT" ? "konveksi" : "konveksi-keluar",
+    konveksi: convectionAllowed ? "konveksi" : "dashboard",
+    "konveksi-masuk": convectionAllowed
+      ? role === "PELIHAT"
+        ? "konveksi"
+        : "konveksi-masuk"
+      : "dashboard",
+    "konveksi-keluar": convectionAllowed
+      ? role === "PELIHAT"
+        ? "konveksi"
+        : "konveksi-keluar"
+      : "dashboard",
   };
   return allowed[key] ?? "dashboard";
 }
@@ -369,12 +469,12 @@ function App() {
 
   useEffect(() => {
     const applyHash = () => {
-      setView(resolveViewFromHash(window.location.hash, user?.role));
+      setView(resolveViewFromHash(window.location.hash, user ?? null));
     };
     applyHash();
     window.addEventListener("hashchange", applyHash);
     return () => window.removeEventListener("hashchange", applyHash);
-  }, [user?.role]);
+  }, [user]);
 
   const loginMutation = useMutation({
     mutationFn: () => login({ email, password }),
@@ -403,8 +503,28 @@ function App() {
 
   const handleNavigate = (key: AppNavKey) => {
     const isViewer = user?.role === "PELIHAT";
+    const rawAllowed = canAccessRawMaterials(user);
+    const convectionAllowed = canAccessConvection(user);
 
     if (key === "users" && user?.role !== "ADMIN") {
+      setView("dashboard");
+      window.location.hash = "#dashboard";
+      return;
+    }
+
+    const rawRestricted: AppNavKey[] = ["bahan", "bahan-masuk", "bahan-keluar"];
+    if (rawRestricted.includes(key) && !rawAllowed) {
+      setView("dashboard");
+      window.location.hash = "#dashboard";
+      return;
+    }
+
+    const convectionRestricted: AppNavKey[] = [
+      "konveksi",
+      "konveksi-masuk",
+      "konveksi-keluar",
+    ];
+    if (convectionRestricted.includes(key) && !convectionAllowed) {
       setView("dashboard");
       window.location.hash = "#dashboard";
       return;
@@ -413,7 +533,6 @@ function App() {
     const viewerBlocked: AppNavKey[] = [
       "masuk",
       "keluar",
-      "bahan-keluar",
       "produksi",
       "drafts",
     ];
@@ -428,6 +547,8 @@ function App() {
       inventory: "inventory",
       masuk: "masuk",
       keluar: "keluar",
+      bahan: "bahan",
+      "bahan-masuk": "bahan-masuk",
       "bahan-keluar": "bahan-keluar",
       produksi: "produksi",
       drafts: "drafts",
@@ -580,7 +701,54 @@ function App() {
     );
   }
 
+  if (view === "bahan") {
+    const rawAllowed = canAccessRawMaterials(user);
+    return (
+      <Shell
+        title="Stok Bahan Baku"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        {rawAllowed ? (
+          <RawMaterialsPage />
+        ) : (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses modul bahan baku dibatasi.
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (view === "bahan-masuk") {
+    const rawAllowed = canAccessRawMaterials(user);
+    return (
+      <Shell
+        title="Bahan Baku Masuk"
+        view={view}
+        userEmail={user?.email}
+        userRole={user?.role}
+        onNavigate={handleNavigate}
+        onLogout={() => logoutMutation.mutate()}
+        logoutLoading={logoutMutation.isPending}
+      >
+        {rawAllowed ? (
+          <RawMaterialsInboundPage />
+        ) : (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses modul bahan baku dibatasi.
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
   if (view === "bahan-keluar") {
+    const rawAllowed = canAccessRawMaterials(user);
     return (
       <Shell
         title="Bahan Baku Keluar"
@@ -591,12 +759,12 @@ function App() {
         onLogout={() => logoutMutation.mutate()}
         logoutLoading={logoutMutation.isPending}
       >
-        {user?.role === "PELIHAT" ? (
-          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
-            Akses transaksi bahan baku keluar dibatasi untuk petugas atau admin.
-          </div>
-        ) : (
+        {rawAllowed ? (
           <RawMaterialsOutboundTrackingPage />
+        ) : (
+          <div className="rounded-lg border bg-white p-6 text-sm text-slate-700">
+            Akses modul bahan baku dibatasi.
+          </div>
         )}
       </Shell>
     );

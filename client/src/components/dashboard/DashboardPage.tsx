@@ -30,6 +30,8 @@ export type AppNavKey =
   | "inventory"
   | "masuk"
   | "keluar"
+  | "bahan"
+  | "bahan-masuk"
   | "bahan-keluar"
   | "drafts"
   | "produksi"
