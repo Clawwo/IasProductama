@@ -47,6 +47,13 @@ import {
   Search,
 } from "lucide-react";
 import { inventoryItemsWithKind } from "./items";
+import {
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  parseInputToBaseQty,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = (
@@ -58,6 +65,20 @@ const INBOUND_URL = `${
 const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
+
+function normalizeCategoryKey(value?: string | null): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function isInFixedCategory(category?: string, fixedCategory?: string): boolean {
+  if (!fixedCategory) return true;
+  const fixed = normalizeCategoryKey(fixedCategory);
+  if (!fixed) return true;
+  const current = normalizeCategoryKey(category);
+  return current.startsWith(fixed);
+}
 
 function getInchSize(text: string): string | null {
   const match = /([0-9]+(?:\.[0-9]+)?)\s*''/.exec(text);
@@ -102,6 +123,7 @@ type RemoteItem = {
   category?: string;
   subCategory?: string;
   kind?: string;
+  unit?: string;
   stock: number;
 };
 
@@ -113,7 +135,11 @@ type Toast = {
   message?: string;
 };
 
-export function InboundPage() {
+export function InboundPage({
+  fixedCategory,
+}: {
+  fixedCategory?: string;
+}) {
   const [vendor, setVendor] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -124,7 +150,9 @@ export function InboundPage() {
     note: "",
   });
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    () => fixedCategory ?? "all",
+  );
   const [ringSub, setRingSub] = useState<"all" | "SNARE" | "TOM">("all");
   const [ringSize, setRingSize] = useState("all");
   const [bodyKind, setBodyKind] = useState("all");
@@ -263,6 +291,7 @@ export function InboundPage() {
         category: it.category ?? "Bahan Baku",
         subCategory: it.subCategory,
         kind: it.kind ?? it.subCategory,
+        unit: it.unit,
         stock: it.stock ?? 0,
       }));
 
@@ -273,6 +302,14 @@ export function InboundPage() {
     () => mergedItems.find((it) => it.code === lineItem.code),
     [mergedItems, lineItem.code],
   );
+
+  const unitByCode = useMemo(() => {
+    const map = new Map<string, ItemUnit>();
+    mergedItems.forEach((it) => map.set(it.code, normalizeItemUnit(it.unit)));
+    return map;
+  }, [mergedItems]);
+
+  const selectedUnit = normalizeItemUnit(selectedItem?.unit);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -385,9 +422,24 @@ export function InboundPage() {
 
   const totals = useMemo(() => {
     const totalItem = lines.length;
-    const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
-    return { totalItem, totalQty };
-  }, [lines]);
+    const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    for (const line of lines) {
+      const unit = unitByCode.get(line.code) ?? "PCS";
+      byUnit[unit] += line.qty;
+    }
+    const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+      .filter(([, qty]) => qty > 0)
+      .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+
+    const totalQtyText = parts.length ? parts.join(" • ") : "0";
+    return { totalItem, totalQtyText };
+  }, [lines, unitByCode]);
+
+  useEffect(() => {
+    if (fixedCategory && selectedCategory !== fixedCategory) {
+      setSelectedCategory(fixedCategory);
+    }
+  }, [fixedCategory, selectedCategory]);
 
   useEffect(() => {
     setRingSub("all");
@@ -628,11 +680,18 @@ export function InboundPage() {
       return;
     }
 
-    const qty = Number(lineItem.qty);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setFormError("Qty harus lebih dari 0.");
+    if (fixedCategory && !isInFixedCategory(target.category, fixedCategory)) {
+      setFormError(`Menu ini khusus kategori ${fixedCategory}.`);
       return;
     }
+
+    const unit = unitByCode.get(code) ?? "PCS";
+    const parsed = parseInputToBaseQty(lineItem.qty, unit);
+    if (!parsed.ok) {
+      setFormError(parsed.message);
+      return;
+    }
+    const qty = parsed.baseQty;
 
     const newNote = lineItem.note.trim();
     setLines((prev) => {
@@ -747,6 +806,17 @@ export function InboundPage() {
       return;
     }
 
+    if (fixedCategory) {
+      const outOfScope = lines.find((l) => {
+        const meta = mergedItems.find((it) => it.code === l.code);
+        return meta ? !isInFixedCategory(meta.category, fixedCategory) : false;
+      });
+      if (outOfScope) {
+        setFormError(`Kode ${outOfScope.code} bukan kategori ${fixedCategory}.`);
+        return;
+      }
+    }
+
     const payload = {
       vendor: trimmedVendor,
       date,
@@ -813,11 +883,12 @@ export function InboundPage() {
                 Gudang
               </p>
               <h1 className="text-3xl font-semibold text-slate-900 leading-tight">
-                Barang Masuk
+                {fixedCategory ? `${fixedCategory} Masuk` : "Barang Masuk"}
               </h1>
               <p className="text-sm text-slate-600">
-                Catat penerimaan stok baru atau retur vendor dengan detail yang
-                terstruktur.
+                {fixedCategory
+                  ? `Catat penerimaan stok ${fixedCategory} dengan detail yang terstruktur.`
+                  : "Catat penerimaan stok baru atau retur vendor dengan detail yang terstruktur."}
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">
@@ -883,8 +954,8 @@ export function InboundPage() {
               sub="Baris diterima"
             />
             <SummaryCard
-              label="Total qty (pcs)"
-              value={String(totals.totalQty)}
+              label="Total qty"
+              value={totals.totalQtyText}
               sub="Semua baris"
             />
             <SummaryCard
@@ -946,32 +1017,41 @@ export function InboundPage() {
             className="grid grid-cols-1 gap-3 md:items-end md:grid-cols-(--cols)"
             style={{ ["--cols" as string]: gridTemplateColumns }}
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="justify-between">
-                  <span className="truncate text-left">
-                    {selectedCategory === "all" ? "Kategori" : selectedCategory}
-                  </span>
-                  <Search className="size-4 text-slate-500" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Pilih kategori</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {categories.map((cat) => (
-                  <DropdownMenuItem
-                    key={cat}
-                    onSelect={() => {
-                      setSelectedCategory(cat);
-                    }}
-                  >
-                    <span className="truncate" title={cat}>
-                      {cat}
+            {fixedCategory ? (
+              <Button variant="outline" className="justify-between" disabled>
+                <span className="truncate text-left">{fixedCategory}</span>
+                <Search className="size-4 text-slate-500" />
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="justify-between">
+                    <span className="truncate text-left">
+                      {selectedCategory === "all"
+                        ? "Kategori"
+                        : selectedCategory}
                     </span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <Search className="size-4 text-slate-500" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuLabel>Pilih kategori</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {categories.map((cat) => (
+                    <DropdownMenuItem
+                      key={cat}
+                      onSelect={() => {
+                        setSelectedCategory(cat);
+                      }}
+                    >
+                      <span className="truncate" title={cat}>
+                        {cat}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {filterControls.map((control) => control)}
 
@@ -991,7 +1071,7 @@ export function InboundPage() {
                           stockBadgeClass,
                         )}
                       >
-                        Stok: {selectedItem?.stock ?? 0}
+                        Stok: {formatBaseQtyWithUnit(selectedItem?.stock ?? 0, selectedUnit)}
                       </span>
                     ) : null}
                     <Search className="size-4 text-slate-500" />
@@ -1063,7 +1143,7 @@ export function InboundPage() {
                             {it.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {it.stock ?? 0}
+                            Stok: {formatBaseQtyWithUnit(it.stock ?? 0, unitByCode.get(it.code) ?? "PCS")}
                           </span>
                         </div>
                         <span
@@ -1091,8 +1171,9 @@ export function InboundPage() {
               }
             />
             <Input
-              type="number"
-              min={1}
+              type="text"
+              inputMode={selectedUnit === "METER" ? "decimal" : "numeric"}
+              placeholder={`Qty (${unitLabel(selectedUnit)})`}
               value={lineItem.qty}
               onChange={(e) =>
                 setLineItem((l) => ({ ...l, qty: e.target.value }))
@@ -1125,7 +1206,7 @@ export function InboundPage() {
                 <TableHead className="w-12">No</TableHead>
                 <TableHead>Kode</TableHead>
                 <TableHead>Nama Barang</TableHead>
-                <TableHead className="w-32">Qty (pcs)</TableHead>
+                <TableHead className="w-32">Qty</TableHead>
                 <TableHead>Catatan</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
@@ -1138,7 +1219,9 @@ export function InboundPage() {
                     {line.code}
                   </TableCell>
                   <TableCell className="text-slate-800">{line.name}</TableCell>
-                  <TableCell className="font-semibold">{line.qty}</TableCell>
+                  <TableCell className="font-semibold">
+                    {formatBaseQtyWithUnit(line.qty, unitByCode.get(line.code) ?? "PCS")}
+                  </TableCell>
                   <TableCell className="text-slate-600">
                     {line.note || "-"}
                   </TableCell>

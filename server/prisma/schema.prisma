@@ -23,6 +23,7 @@ model User {
   draftCreated        Draft[]                @relation("DraftCreatedBy")
   draftUpdated        Draft[]                @relation("DraftUpdatedBy")
   rawOutboundCreated  RawMaterialOutbound[]  @relation("RawOutboundCreatedBy")
+  rawInboundCreated   RawMaterialInbound[]   @relation("RawInboundCreatedBy")
   convectionInboundCreated  ConvectionInbound[]  @relation("ConvectionInboundCreatedBy")
   convectionOutboundCreated ConvectionOutbound[] @relation("ConvectionOutboundCreatedBy")
 }
@@ -99,6 +100,7 @@ model Item {
   category    String?
   subCategory String?
   kind        String?
+  unit        String   @default("PCS")
   stock       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -110,10 +112,12 @@ model BahanBaku {
   category  String?
   subCategory String?
   kind      String?
+  unit      String   @default("PCS")
   stock     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  inboundLines  RawMaterialInboundLine[]
   outboundLines RawMaterialOutboundLine[]
 }
 
@@ -294,6 +298,41 @@ model ConvectionOutboundLine {
 
   @@index([outboundId])
   @@index([code])
+}
+
+model RawMaterialInbound {
+  id          String                 @id @default(uuid())
+  code        String                 @unique
+  vendor      String
+  date        DateTime
+  note        String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  createdById String?
+  createdBy   User?                  @relation("RawInboundCreatedBy", fields: [createdById], references: [id])
+  lines       RawMaterialInboundLine[]
+
+  @@index([createdById])
+  @@index([date])
+}
+
+model RawMaterialInboundLine {
+  id            String            @id @default(uuid())
+  inboundId     String
+  materialCode  String
+  materialName  String?
+  category      String?
+  subCategory   String?
+  kind          String?
+  qty           Int
+  note          String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  inbound       RawMaterialInbound @relation(fields: [inboundId], references: [id], onDelete: Cascade)
+  material      BahanBaku          @relation(fields: [materialCode], references: [code])
+
+  @@index([inboundId])
+  @@index([materialCode])
 }
 
 model RawMaterialOutbound {

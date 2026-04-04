@@ -61,6 +61,15 @@ import {
   inventoryItemsWithKind,
   type InventoryItemWithKind,
 } from "./items";
+import {
+  baseQtyToDisplayNumber,
+  baseQtyToInputString,
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  parseInputToBaseQty,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = (
@@ -79,6 +88,7 @@ type RemoteItem = {
   subCategory?: string;
   kind?: string;
   stock: number;
+  unit?: string;
 };
 
 export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
@@ -97,7 +107,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     code: "",
     name: "",
     category: "",
-    stock: 0,
+    unit: "PCS" as ItemUnit,
+    stock: "0",
   });
   const [manualCode, setManualCode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -213,7 +224,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       const matchCategory =
         selectedCategories.length === 0 ||
         selectedCategories.includes(item.category);
-      const status = getStatus(item.stock);
+      const status = getStatus(item.stock, item.unit);
       const matchStatus = statusFilter === "all" || status === statusFilter;
       const isRing = item.kind === "RING";
       const matchRingSub =
@@ -264,7 +275,17 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   ]);
 
   const totalItems = filtered.length;
-  const totalStock = filtered.reduce((sum, item) => sum + item.stock, 0);
+  const totalStockText = useMemo(() => {
+    const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    for (const item of filtered) {
+      const unit = normalizeItemUnit(item.unit);
+      byUnit[unit] += item.stock;
+    }
+    const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+      .filter(([, qty]) => qty > 0)
+      .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+    return parts.length ? parts.join(" • ") : "0";
+  }, [filtered]);
 
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
 
@@ -381,7 +402,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   function openAddForm() {
     if (readOnly) return;
     setEditing(null);
-    setForm({ code: "", name: "", category: "", stock: 0 });
+    setForm({ code: "", name: "", category: "", unit: "PCS", stock: "0" });
     setManualCode(false);
     setFormError(null);
     setShowForm(true);
@@ -389,12 +410,14 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   function openEditForm(item: InventoryItemWithKind) {
     if (readOnly) return;
+    const unit = normalizeItemUnit(item.unit);
     setEditing(item);
     setForm({
       code: item.code,
       name: item.name,
       category: item.category,
-      stock: item.stock,
+      unit,
+      stock: baseQtyToInputString(item.stock, unit),
     });
     setManualCode(true);
     setFormError(null);
@@ -408,17 +431,21 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
       return;
     }
-    if (form.stock < 0) {
-      setFormError("Stok tidak boleh negatif.");
+
+    const unit = normalizeItemUnit(form.unit);
+    const parsedStock = parseInputToBaseQty(form.stock, unit, 0);
+    if (!parsedStock.ok) {
+      setFormError(parsedStock.message);
       return;
     }
 
-    const payload: InventoryItemWithKind = {
-      ...form,
+    const payload = {
       code: form.code.trim(),
       name: form.name.trim(),
       category: form.category.trim(),
-      kind: inferKind(form),
+      unit,
+      stock: parsedStock.baseQty,
+      kind: inferKind({ code: form.code.trim(), category: form.category.trim() }),
     };
 
     if (!editing && items.some((it) => it.code === payload.code)) {
@@ -476,13 +503,21 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   const exportInventory = () => {
     if (filtered.length === 0) return;
-    const header = ["Kode barang", "Nama barang", "Kategori", "Stok", "Status"];
+    const header = [
+      "Kode barang",
+      "Nama barang",
+      "Kategori",
+      "Stok",
+      "Satuan",
+      "Status",
+    ];
     const rows = filtered.map((item) => [
       item.code,
       item.name,
       item.category,
-      item.stock,
-      getStatus(item.stock),
+      baseQtyToDisplayNumber(item.stock, normalizeItemUnit(item.unit)),
+      unitLabel(normalizeItemUnit(item.unit)),
+      getStatus(item.stock, item.unit),
     ]);
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -564,7 +599,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                   Total stok
                 </p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {totalStock}
+                  {totalStockText}
                 </p>
               </div>
             </div>
@@ -1045,14 +1080,34 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
+                  Satuan
+                </label>
+                <select
+                  className="h-11 w-full rounded-lg border px-3 text-sm shadow-sm"
+                  value={form.unit}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      unit: normalizeItemUnit(e.target.value),
+                    }))
+                  }
+                >
+                  <option value="PCS">pcs</option>
+                  <option value="GRAM">gram</option>
+                  <option value="METER">m</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">
                   Stok
                 </label>
                 <Input
-                  type="number"
-                  min={0}
+                  type="text"
+                  inputMode={form.unit === "METER" ? "decimal" : "numeric"}
+                  placeholder={`Stok (${unitLabel(normalizeItemUnit(form.unit))})`}
                   value={form.stock}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, stock: Number(e.target.value) }))
+                    setForm((f) => ({ ...f, stock: e.target.value }))
                   }
                   className="h-11"
                 />
@@ -1099,7 +1154,7 @@ function Row({
   onDelete: () => void;
   readOnly?: boolean;
 }) {
-  const status = getStatus(item.stock);
+  const status = getStatus(item.stock, item.unit);
   return (
     <TableRow className="text-sm">
       <TableCell className="text-slate-500">{rowNumber}</TableCell>
@@ -1111,7 +1166,7 @@ function Row({
         <StatusBadge status={status} />
       </TableCell>
       <TableCell className="font-semibold text-slate-900">
-        {item.stock}
+        {formatBaseQtyWithUnit(item.stock, normalizeItemUnit(item.unit))}
       </TableCell>
       {!readOnly && (
         <TableCell>
@@ -1203,9 +1258,13 @@ function StatusTab({
   );
 }
 
-function getStatus(stock: number): "aman" | "menipis" | "kritis" {
-  if (stock <= 5) return "kritis";
-  if (stock <= 14) return "menipis";
+function getStatus(
+  stock: number,
+  unit?: string,
+): "aman" | "menipis" | "kritis" {
+  const displayStock = baseQtyToDisplayNumber(stock, normalizeItemUnit(unit));
+  if (displayStock <= 5) return "kritis";
+  if (displayStock <= 14) return "menipis";
   return "aman";
 }
 

@@ -28,6 +28,9 @@ import { SummaryChart } from "./SummaryChart";
 export type AppNavKey =
   | "dashboard"
   | "inventory"
+  | "bengkel"
+  | "bengkel-masuk"
+  | "bengkel-keluar"
   | "masuk"
   | "keluar"
   | "bahan-keluar"

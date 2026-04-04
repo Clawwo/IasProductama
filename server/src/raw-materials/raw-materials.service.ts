@@ -42,6 +42,7 @@ export class RawMaterialsService {
         category: dto.category,
         subCategory: dto.subCategory,
         kind: dto.kind,
+        unit: dto.unit,
         stock: dto.stock ?? 0,
       },
     });
@@ -60,6 +61,7 @@ export class RawMaterialsService {
         category: dto.category ?? undefined,
         subCategory: dto.subCategory ?? undefined,
         kind: dto.kind ?? undefined,
+        unit: dto.unit ?? undefined,
         stock: dto.stock ?? undefined,
       },
     });

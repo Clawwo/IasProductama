@@ -214,7 +214,7 @@ export function DraftsPage() {
     } else if (meta.kind === "INBOUND") {
       window.location.hash = "#masuk";
     } else if (meta.kind === "OUTBOUND_RAW") {
-      window.location.hash = "#bahan-keluar";
+      window.location.hash = "#bengkel-keluar";
     } else if (meta.kind === "PRODUCTION") {
       window.location.hash = "#produksi";
     } else {

@@ -38,6 +38,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { httpJson } from "@/lib/http"; // Added import for httpJson
+import {
+  baseQtyToDisplayNumber,
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -164,11 +171,11 @@ const resolveActor = (user?: UserRef | null) => {
 };
 
 export function RiwayatPage() {
-  const [items, setItems] = useState<Array<{ code: string; name?: string }>>(
-    [],
-  );
+  const [items, setItems] = useState<
+    Array<{ code: string; name?: string; unit?: string }>
+  >([]);
   const [rawItems, setRawItems] = useState<
-    Array<{ code: string; name?: string }>
+    Array<{ code: string; name?: string; unit?: string }>
   >([]);
   const [inbound, setInbound] = useState<InboundApi[]>([]);
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
@@ -213,8 +220,12 @@ export function RiwayatPage() {
     const loadItems = async () => {
       try {
         const [data, rawData] = await Promise.all([
-          httpJson<Array<{ code: string; name?: string }>>(ITEMS_URL),
-          httpJson<Array<{ code: string; name?: string }>>(RAW_ITEMS_URL),
+          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
+            ITEMS_URL,
+          ),
+          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
+            RAW_ITEMS_URL,
+          ),
         ]);
         if (!cancelled) {
           setItems(data);
@@ -230,6 +241,14 @@ export function RiwayatPage() {
       cancelled = true;
     };
   }, []);
+
+  const unitByCode = useMemo(() => {
+    const map = new Map<string, ItemUnit>();
+    [...items, ...rawItems].forEach((it) =>
+      map.set(it.code, normalizeItemUnit(it.unit)),
+    );
+    return map;
+  }, [items, rawItems]);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -374,20 +393,30 @@ export function RiwayatPage() {
     const outboundRows = movements.filter((m) => m.direction === "Keluar");
     const outboundGoods = outboundRows.filter((m) => m.kind === "Barang");
     const outboundRaw = outboundRows.filter((m) => m.kind === "Bahan");
-    const inboundQty = inboundRows.reduce((sum, row) => sum + row.qty, 0);
-    const outboundQty = outboundRows.reduce((sum, row) => sum + row.qty, 0);
-    const outboundRawQty = outboundRaw.reduce((sum, row) => sum + row.qty, 0);
+
+    const sumByUnitText = (rows: Movement[]) => {
+      const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+      for (const row of rows) {
+        const unit = unitByCode.get(row.itemCode) ?? "PCS";
+        byUnit[unit] += row.qty;
+      }
+      const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+        .filter(([, qty]) => qty > 0)
+        .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+      return parts.length ? parts.join(" • ") : "0";
+    };
+
     return {
       total,
       inboundCount: inboundRows.length,
       outboundCount: outboundRows.length,
       outboundGoodsCount: outboundGoods.length,
       outboundRawCount: outboundRaw.length,
-      inboundQty,
-      outboundQty,
-      outboundRawQty,
+      inboundQtyText: sumByUnitText(inboundRows),
+      outboundGoodsQtyText: sumByUnitText(outboundGoods),
+      outboundRawQtyText: sumByUnitText(outboundRaw),
     };
-  }, [movements]);
+  }, [movements, unitByCode]);
 
   // Draft API belum tersedia di halaman ini; kosongkan agar kompilasi tetap aman
   const drafts: DraftApi[] = [];
@@ -457,18 +486,23 @@ export function RiwayatPage() {
       "Keterangan",
     ];
 
-    const data: Array<Array<string | number>> = rows.map((row) => [
-      row.txCode,
-      toDateOnly(row.rawTime, row.time),
-      row.itemCode,
-      row.name,
-      Math.abs(row.qty),
-      "pcs",
-      row.actor ?? "",
-      row.kind,
-      row.batchCode ?? "",
-      row.note ?? "",
-    ]);
+    const data: Array<Array<string | number>> = rows.map((row) => {
+      const unit = unitByCode.get(row.itemCode) ?? "PCS";
+      const absBaseQty = Math.abs(row.qty);
+      const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
+      return [
+        row.txCode,
+        toDateOnly(row.rawTime, row.time),
+        row.itemCode,
+        row.name,
+        displayQty,
+        unitLabel(unit),
+        row.actor ?? "",
+        row.kind,
+        row.batchCode ?? "",
+        row.note ?? "",
+      ];
+    });
 
     return [header, ...data];
   };
@@ -754,7 +788,7 @@ export function RiwayatPage() {
                 {stats.inboundCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.inboundQty} pcs
+                {stats.inboundQtyText}
               </p>
             </div>
           </div>
@@ -772,7 +806,7 @@ export function RiwayatPage() {
                 {stats.outboundGoodsCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundQty - stats.outboundRawQty} pcs
+                {stats.outboundGoodsQtyText}
               </p>
             </div>
           </div>
@@ -788,7 +822,7 @@ export function RiwayatPage() {
                 {stats.outboundRawCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundRawQty} pcs
+                {stats.outboundRawQtyText}
               </p>
             </div>
           </div>
@@ -1131,7 +1165,9 @@ export function RiwayatPage() {
                     const lineCategory = line.category ?? detailData.category;
                     const lineKind = line.kind ?? detailData.kind;
                     const isIn = lineDirection === "Masuk";
-                    const signedQty = `${isIn ? "+" : "-"}${line.qty}`;
+                    const unit = unitByCode.get(line.code) ?? "PCS";
+                    const sign = isIn ? "+" : "-";
+                    const signedQty = `${sign}${formatBaseQtyWithUnit(Math.abs(line.qty), unit)}`;
                     return (
                       <div
                         key={`${line.code}-${idx}`}
@@ -1185,7 +1221,7 @@ export function RiwayatPage() {
                               </p>
                             ) : null}
                           </div>
-                          <span className="font-semibold">{signedQty} pcs</span>
+                          <span className="font-semibold">{signedQty}</span>
                         </div>
                         {line.note ? (
                           <p className="mt-1 text-xs text-muted-foreground">
