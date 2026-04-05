@@ -52,6 +52,8 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
   .replace(/\/$/, "");
 const HISTORY_URL = `${API_BASE}/api/history`;
+const ITEMS_URL = `${API_BASE}/api/items`;
+const RAW_ITEMS_URL = `${API_BASE}/api/raw-materials`;
 
 type UserRef = { id: string; name?: string | null; email?: string | null };
 type HistoryLine = {
@@ -368,7 +370,7 @@ export function RiwayatPage() {
       const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
       return [
         row.txCode,
-        toDateOnly(row.rawTime, row.time),
+        toDateOnly(row.rawTime),
         row.itemCode,
         row.name,
         displayQty,
