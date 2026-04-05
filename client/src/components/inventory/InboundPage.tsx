@@ -66,6 +66,10 @@ const ITEMS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/items`;
 const RAW_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/raw-materials`;
 const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
 
+function getTodayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function normalizeCategoryKey(value?: string | null): string {
   return String(value ?? "")
     .trim()
@@ -105,6 +109,10 @@ function getBodyKindLabel(kind?: string): string | null {
   }
 }
 
+function getRawTypeValue(item: { kind?: string; subCategory?: string }) {
+  return String(item.kind ?? item.subCategory ?? "").trim();
+}
+
 function sortNumericStrings(values: string[]) {
   return values.sort((a, b) => parseFloat(a) - parseFloat(b));
 }
@@ -137,14 +145,14 @@ type Toast = {
 
 export function InboundPage({
   fixedCategory,
-}: {
-  fixedCategory?: string;
   canReadRawMaterials = false,
 }: {
+  fixedCategory?: string;
   canReadRawMaterials?: boolean;
 }) {
   const [vendor, setVendor] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [today, setToday] = useState(() => getTodayIsoDate());
+  const [date, setDate] = useState(() => getTodayIsoDate());
   const [note, setNote] = useState("");
   const [lineItem, setLineItem] = useState({
     code: "",
@@ -181,6 +189,16 @@ export function InboundPage({
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
   const [rawItems, setRawItems] = useState<RemoteItem[]>([]);
+
+  useEffect(() => {
+    const tick = () => {
+      const next = getTodayIsoDate();
+      setToday((prev) => (prev === next ? prev : next));
+      setDate((prev) => (prev < next ? next : prev));
+    };
+    const interval = window.setInterval(tick, 60000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   function pushToast(variant: ToastVariant, title: string, message?: string) {
     const id = crypto.randomUUID();
@@ -333,8 +351,9 @@ export function InboundPage({
   const rawTypeOptions = useMemo(() => {
     const set = new Set<string>();
     mergedItems.forEach((it) => {
-      if (it.category === "Bahan Baku" && it.subCategory) {
-        set.add(it.subCategory);
+      if (it.category === "Bahan Baku") {
+        const value = getRawTypeValue(it);
+        if (value) set.add(value);
       }
     });
     return ["all", ...Array.from(set).sort()];
@@ -522,7 +541,8 @@ export function InboundPage({
       }
 
       if (selectedCategory === "Bahan Baku") {
-        if (rawType !== "all" && it.subCategory !== rawType) return false;
+        const value = getRawTypeValue(it);
+        if (rawType !== "all" && value !== rawType) return false;
       }
 
       if (!term) return true;
@@ -825,7 +845,9 @@ export function InboundPage({
         return meta ? !isInFixedCategory(meta.category, fixedCategory) : false;
       });
       if (outOfScope) {
-        setFormError(`Kode ${outOfScope.code} bukan kategori ${fixedCategory}.`);
+        setFormError(
+          `Kode ${outOfScope.code} bukan kategori ${fixedCategory}.`,
+        );
         return;
       }
     }
@@ -990,6 +1012,7 @@ export function InboundPage({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                min={today}
               />
             </LabeledInput>
             <LabeledInput
@@ -1085,7 +1108,11 @@ export function InboundPage({
                           stockBadgeClass,
                         )}
                       >
-                        Stok: {formatBaseQtyWithUnit(selectedItem?.stock ?? 0, selectedUnit)}
+                        Stok:{" "}
+                        {formatBaseQtyWithUnit(
+                          selectedItem?.stock ?? 0,
+                          selectedUnit,
+                        )}
                       </span>
                     ) : null}
                     <Search className="size-4 text-slate-500" />
@@ -1157,7 +1184,11 @@ export function InboundPage({
                             {it.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {formatBaseQtyWithUnit(it.stock ?? 0, unitByCode.get(it.code) ?? "PCS")}
+                            Stok:{" "}
+                            {formatBaseQtyWithUnit(
+                              it.stock ?? 0,
+                              unitByCode.get(it.code) ?? "PCS",
+                            )}
                           </span>
                         </div>
                         <span
@@ -1234,7 +1265,10 @@ export function InboundPage({
                   </TableCell>
                   <TableCell className="text-slate-800">{line.name}</TableCell>
                   <TableCell className="font-semibold">
-                    {formatBaseQtyWithUnit(line.qty, unitByCode.get(line.code) ?? "PCS")}
+                    {formatBaseQtyWithUnit(
+                      line.qty,
+                      unitByCode.get(line.code) ?? "PCS",
+                    )}
                   </TableCell>
                   <TableCell className="text-slate-600">
                     {line.note || "-"}

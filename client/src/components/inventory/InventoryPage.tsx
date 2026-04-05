@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { httpJson } from "@/lib/http";
+import { HttpError, httpJson } from "@/lib/http";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,6 +95,8 @@ type RemoteItem = {
   updatedAt?: string;
 };
 
+type InventoryDataSource = "all" | "raw-materials";
+
 const allowedSubCategories: InventoryItem["subCategory"][] = [
   "SNARE",
   "TOM",
@@ -134,11 +136,28 @@ type Toast = {
 
 export function InventoryPage({
   readOnly = false,
-  canReadRawMaterials = false,
+  fixedCategory,
+  dataSource = "all",
+  title,
+  description,
 }: {
   readOnly?: boolean;
-  canReadRawMaterials?: boolean;
+  fixedCategory?: string;
+  dataSource?: InventoryDataSource;
+  title?: string;
+  description?: string;
 }) {
+  const fixedCategoryValue = (fixedCategory ?? "").trim();
+  const fixedCategoryFilter = fixedCategoryValue
+    ? normalizeCategoryForFilter(fixedCategoryValue)
+    : "";
+  const isCategoryLocked = Boolean(fixedCategoryFilter);
+  const resolvedTitle = title ?? "Daftar Barang";
+  const resolvedDescription =
+    description ??
+    "Cari barang berdasarkan nama, kode, kategori, atau tanggal.";
+  const isRawDataSource = dataSource === "raw-materials";
+  const resourceUrl = isRawDataSource ? RAW_URL : ITEMS_URL;
   const [items, setItems] = useState<InventoryListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +168,9 @@ export function InventoryPage({
   );
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    fixedCategoryFilter ? [fixedCategoryFilter] : [],
+  );
   const [page, setPage] = useState(1);
   const perPage = 15;
   const [showForm, setShowForm] = useState(false);
@@ -157,7 +178,7 @@ export function InventoryPage({
   const [form, setForm] = useState({
     code: "",
     name: "",
-    category: "",
+    category: fixedCategoryValue,
     unit: "PCS" as ItemUnit,
     stock: "0",
   });
@@ -196,33 +217,54 @@ export function InventoryPage({
     setLoading(true);
     setError(null);
     try {
-      const rawPromise = canReadRawMaterials
-        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+      if (isRawDataSource) {
+        const rawData = await httpJson<RemoteItem[]>(RAW_URL).catch(
+          (err: unknown) => {
             const status =
               typeof err === "object" && err !== null && "status" in err
                 ? (err as { status?: number }).status
                 : undefined;
-            if (status === 403) return [];
+            if (status === 403) return [] as RemoteItem[];
             throw err;
-          })
-        : Promise.resolve<RemoteItem[]>([]);
-      const [itemsData, rawData, productsData] = await Promise.all([
+          },
+        );
+
+        const fromApi = rawData
+          .filter((it) => Boolean(it.code))
+          .map((it) => {
+            const category = it.category ?? fixedCategoryValue;
+            const merged: InventoryListItem = {
+              code: it.code,
+              name: it.name ?? "",
+              category: category ?? "",
+              subCategory: normalizeSubCategory(it.subCategory),
+              stock:
+                typeof it.stock === "number" && Number.isFinite(it.stock)
+                  ? it.stock
+                  : 0,
+              unit: it.unit,
+              kind:
+                (it.kind as InventoryItemWithKind["kind"] | undefined) ??
+                inferKind({ code: it.code, category: category ?? "" }),
+              createdAt: it.createdAt,
+              updatedAt: it.updatedAt,
+            };
+            return merged;
+          });
+
+        setItems(fromApi);
+        return;
+      }
+
+      const [itemsData, productsData] = await Promise.all([
         httpJson<RemoteItem[]>(ITEMS_URL),
-        rawPromise,
         httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
 
       const remoteMerged = [
         ...itemsData,
-        ...rawData.filter(
-          (raw) => !itemsData.some((it) => it.code === raw.code),
-        ),
         ...productsData
-          .filter(
-            (prod) =>
-              !itemsData.some((it) => it.code === prod.code) &&
-              !rawData.some((raw) => raw.code === prod.code),
-          )
+          .filter((prod) => !itemsData.some((it) => it.code === prod.code))
           .map((prod) => {
             // Normalisasi kategori DRUMBAND/HTS/SEMI menjadi Produk
             if (
@@ -279,7 +321,7 @@ export function InventoryPage({
     } finally {
       setLoading(false);
     }
-  }, [canReadRawMaterials, pushToast]);
+  }, [fixedCategoryValue, isRawDataSource, pushToast]);
 
   useEffect(() => {
     fetchItems();
@@ -313,12 +355,13 @@ export function InventoryPage({
       const matchText =
         item.name.toLowerCase().includes(term) ||
         item.code.toLowerCase().includes(term);
+      const itemCategory = normalizeCategoryForFilter(item.category);
+      const matchFixedCategory =
+        !fixedCategoryFilter || itemCategory === fixedCategoryFilter;
       const matchCategory =
         selectedCategories.length === 0 ||
-        selectedCategories.includes(item.category);
+        selectedCategories.includes(itemCategory);
       const status = getStatus(item.stock, item.unit);
-        selectedCategories.includes(normalizeCategoryForFilter(item.category));
-      const status = getStatus(item.stock);
       const matchStatus = statusFilter === "all" || status === statusFilter;
       const isRing = item.kind === "RING";
       const matchRingSub =
@@ -354,6 +397,7 @@ export function InventoryPage({
           (Number.isNaN(toTimestamp) || itemTimestamp <= toTimestamp));
       return (
         matchText &&
+        matchFixedCategory &&
         matchCategory &&
         matchStatus &&
         matchRingSub &&
@@ -376,6 +420,7 @@ export function InventoryPage({
     ringColor,
     ringHoles,
     productSubCategory,
+    fixedCategoryFilter,
   ]);
 
   const totalItems = filtered.length;
@@ -595,7 +640,13 @@ export function InventoryPage({
   function openAddForm() {
     if (readOnly) return;
     setEditing(null);
-    setForm({ code: "", name: "", category: "", unit: "PCS", stock: "0" });
+    setForm({
+      code: "",
+      name: "",
+      category: fixedCategoryValue,
+      unit: "PCS",
+      stock: "0",
+    });
     setManualCode(false);
     setFormError(null);
     setShowForm(true);
@@ -608,7 +659,7 @@ export function InventoryPage({
     setForm({
       code: item.code,
       name: item.name,
-      category: item.category,
+      category: fixedCategoryValue || item.category,
       unit,
       stock: baseQtyToInputString(item.stock, unit),
     });
@@ -620,7 +671,8 @@ export function InventoryPage({
   async function saveForm() {
     if (readOnly) return;
     setFormError(null);
-    if (!form.code.trim() || !form.name.trim() || !form.category.trim()) {
+    const categoryValue = (fixedCategoryValue || form.category).trim();
+    if (!form.code.trim() || !form.name.trim() || !categoryValue) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
       return;
     }
@@ -635,10 +687,10 @@ export function InventoryPage({
     const payload = {
       code: form.code.trim(),
       name: form.name.trim(),
-      category: form.category.trim(),
+      category: categoryValue,
       unit,
       stock: parsedStock.baseQty,
-      kind: inferKind({ code: form.code.trim(), category: form.category.trim() }),
+      kind: inferKind({ code: form.code.trim(), category: categoryValue }),
     };
 
     if (!editing && items.some((it) => it.code === payload.code)) {
@@ -651,14 +703,40 @@ export function InventoryPage({
     setSaving(true);
     setFormError(null);
     try {
-      const targetUrl = editing
-        ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
-        : ITEMS_URL;
-      const savedItem = await httpJson<RemoteItem>(targetUrl, {
-        method: editing ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let created = false;
+      const requestBody = JSON.stringify(payload);
+      const updateUrl = editing
+        ? `${resourceUrl}/${encodeURIComponent(editing.code)}`
+        : resourceUrl;
+      let savedItem: RemoteItem;
+
+      if (!editing) {
+        savedItem = await httpJson<RemoteItem>(resourceUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: requestBody,
+        });
+        created = true;
+      } else {
+        try {
+          savedItem = await httpJson<RemoteItem>(updateUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody,
+          });
+        } catch (err: unknown) {
+          if (err instanceof HttpError && err.status === 404) {
+            savedItem = await httpJson<RemoteItem>(resourceUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: requestBody,
+            });
+            created = true;
+          } else {
+            throw err;
+          }
+        }
+      }
 
       setItems((prev) => {
         const targetCode = editing?.code ?? payload.code;
@@ -693,7 +771,7 @@ export function InventoryPage({
         return next;
       });
 
-      if (editing) {
+      if (!created && editing) {
         setRecentlyEditedCode(savedItem.code ?? editing.code);
         pushToast(
           "default",
@@ -701,6 +779,7 @@ export function InventoryPage({
           `${payload.name} berhasil disimpan.`,
         );
       } else {
+        setRecentlyEditedCode(savedItem.code ?? payload.code);
         pushToast(
           "default",
           "Barang ditambahkan",
@@ -724,7 +803,7 @@ export function InventoryPage({
     setDeleting(true);
     setError(null);
     try {
-      await httpJson(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
+      await httpJson(`${resourceUrl}/${encodeURIComponent(code)}`, {
         method: "DELETE",
       });
       setItems((prev) => prev.filter((it) => it.code !== code));
@@ -820,7 +899,7 @@ export function InventoryPage({
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="flex items-center gap-2 font-heading text-3xl uppercase tracking-wide text-slate-900">
               <PackageSearch className="h-7 w-7 text-sky-600" />
-              Daftar Barang
+              {resolvedTitle}
             </h1>
             <div className="ml-auto flex flex-wrap gap-2 text-sm font-semibold text-slate-600">
               <Button
@@ -843,9 +922,7 @@ export function InventoryPage({
               )}
             </div>
           </div>
-          <p className="text-sm text-slate-600">
-            Cari barang berdasarkan nama, kode, kategori, atau tanggal.
-          </p>
+          <p className="text-sm text-slate-600">{resolvedDescription}</p>
           {error ? (
             <p className="text-sm text-red-600">Gagal memuat data: {error}</p>
           ) : null}
@@ -924,52 +1001,66 @@ export function InventoryPage({
             </div>
           </div>
           <div className="flex gap-2 sm:col-span-1 min-w-0">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-11 w-full max-w-xs justify-between border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <Filter className="h-4 w-4" />
-                    {selectedCategories.length === 0
-                      ? "Semua kategori"
-                      : selectedCategories.join(", ")}
-                  </span>
-                  <EllipsisVertical className="h-4 w-4 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56">
-                <DropdownMenuLabel>Pilih kategori</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  checked={selectedCategories.length === 0}
-                  onCheckedChange={() => setSelectedCategories([])}
-                >
-                  Semua kategori
-                </DropdownMenuCheckboxItem>
-                {categories.map((cat) => {
-                  const checked = selectedCategories.includes(cat);
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={cat}
-                      checked={checked}
-                      onCheckedChange={(isChecked) => {
-                        setSelectedCategories((prev) => {
-                          if (isChecked) {
-                            const next = [...prev, cat];
-                            return Array.from(new Set(next));
-                          }
-                          return prev.filter((c) => c !== cat);
-                        });
-                      }}
-                    >
-                      {cat}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {isCategoryLocked ? (
+              <Button
+                variant="outline"
+                className="h-11 w-full max-w-xs justify-between border-slate-200 bg-white text-slate-700 shadow-sm"
+                disabled
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Filter className="h-4 w-4" />
+                  {fixedCategoryFilter}
+                </span>
+                <EllipsisVertical className="h-4 w-4 text-slate-400" />
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full max-w-xs justify-between border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <Filter className="h-4 w-4" />
+                      {selectedCategories.length === 0
+                        ? "Semua kategori"
+                        : selectedCategories.join(", ")}
+                    </span>
+                    <EllipsisVertical className="h-4 w-4 text-slate-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  <DropdownMenuLabel>Pilih kategori</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={selectedCategories.length === 0}
+                    onCheckedChange={() => setSelectedCategories([])}
+                  >
+                    Semua kategori
+                  </DropdownMenuCheckboxItem>
+                  {categories.map((cat) => {
+                    const checked = selectedCategories.includes(cat);
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={cat}
+                        checked={checked}
+                        onCheckedChange={(isChecked) => {
+                          setSelectedCategories((prev) => {
+                            if (isChecked) {
+                              const next = [...prev, cat];
+                              return Array.from(new Set(next));
+                            }
+                            return prev.filter((c) => c !== cat);
+                          });
+                        }}
+                      >
+                        {cat}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <Button
               variant="secondary"
               className="h-11 border-slate-200 bg-white px-4 text-slate-700 shadow-sm hover:bg-slate-50"
@@ -977,7 +1068,9 @@ export function InventoryPage({
                 setSearch("");
                 setFromDate("");
                 setToDate("");
-                setSelectedCategories([]);
+                setSelectedCategories(
+                  fixedCategoryFilter ? [fixedCategoryFilter] : [],
+                );
                 setStatusFilter("all");
                 setRingSubCategory("all");
                 setRingSize("all");
@@ -1364,7 +1457,10 @@ export function InventoryPage({
                     setForm((f) => {
                       const next = { ...f, name: value };
                       if (!editing && !manualCode) {
-                        const auto = suggestCode(value, f.category);
+                        const auto = suggestCode(
+                          value,
+                          fixedCategoryValue || f.category,
+                        );
                         if (auto) next.code = auto;
                       }
                       return next;
@@ -1379,8 +1475,9 @@ export function InventoryPage({
                   Kategori
                 </label>
                 <Input
-                  value={form.category}
+                  value={fixedCategoryValue || form.category}
                   onChange={(e) => {
+                    if (fixedCategoryValue) return;
                     const value = e.target.value;
                     setForm((f) => {
                       const next = { ...f, category: value };
@@ -1391,15 +1488,18 @@ export function InventoryPage({
                       return next;
                     });
                   }}
-                  list="category-options"
+                  list={fixedCategoryValue ? undefined : "category-options"}
                   placeholder="Pilih atau ketik kategori"
                   className="h-11"
+                  disabled={Boolean(fixedCategoryValue)}
                 />
-                <datalist id="category-options">
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat} />
-                  ))}
-                </datalist>
+                {!fixedCategoryValue ? (
+                  <datalist id="category-options">
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
+                ) : null}
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">

@@ -1,5 +1,12 @@
-import { RawMaterialsPage } from "@/components/raw/RawMaterialsPage";
+import { InventoryPage } from "@/components/inventory/InventoryPage";
 
 export function BengkelInventoryPage({ readOnly }: { readOnly?: boolean }) {
-  return <RawMaterialsPage readOnly={readOnly} />;
+  return (
+    <InventoryPage
+      readOnly={readOnly}
+      dataSource="raw-materials"
+      fixedCategory="Bahan Baku"
+      title="Stok Bengkel"
+    />
+  );
 }

@@ -1,9 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { httpJson, toUserMessage } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +61,10 @@ const ITEMS_URL = `${
   API_BASE ? API_BASE.replace(/\/$/, "") : ""
 }/api/convection/items`;
 const DRAFTS_URL = `${API_BASE ? API_BASE.replace(/\/$/, "") : ""}/api/drafts`;
+
+function getTodayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 type LineItem = {
   id: string;
@@ -147,7 +146,8 @@ function formatStockDisplay(stock: number, unit: string): string {
 
 export function ConvectionOutboundPage() {
   const [receiver, setReceiver] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [today, setToday] = useState(() => getTodayIsoDate());
+  const [date, setDate] = useState(() => getTodayIsoDate());
   const [note, setNote] = useState("");
   const [lineItem, setLineItem] = useState({
     code: "",
@@ -175,6 +175,16 @@ export function ConvectionOutboundPage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const tick = () => {
+      const next = getTodayIsoDate();
+      setToday((prev) => (prev === next ? prev : next));
+      setDate((prev) => (prev < next ? next : prev));
+    };
+    const interval = window.setInterval(tick, 60000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -333,7 +343,10 @@ export function ConvectionOutboundPage() {
     );
   });
 
-  const visibleItems = useMemo(() => filteredItems.slice(0, 50), [filteredItems]);
+  const visibleItems = useMemo(
+    () => filteredItems.slice(0, 50),
+    [filteredItems],
+  );
 
   const stockBadgeClass = useMemo(() => {
     if (!selectedItem) return "border-slate-200 bg-slate-50 text-slate-600";
@@ -716,6 +729,7 @@ export function ConvectionOutboundPage() {
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                min={today}
               />
             </LabeledInput>
             <LabeledInput label="Penerima" icon={<User className="size-4" />}>
@@ -810,7 +824,10 @@ export function ConvectionOutboundPage() {
                   }}
                 >
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="h-11 w-full justify-between">
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full justify-between"
+                    >
                       <span className="truncate text-left">
                         {lineItem.name
                           ? `${lineItem.code} - ${lineItem.name}`
@@ -824,7 +841,11 @@ export function ConvectionOutboundPage() {
                               stockBadgeClass,
                             )}
                           >
-                            Stok: {formatStockDisplay(Number(selectedItem?.stockBase ?? 0), selectedItem?.unit || "PCS")}
+                            Stok:{" "}
+                            {formatStockDisplay(
+                              Number(selectedItem?.stockBase ?? 0),
+                              selectedItem?.unit || "PCS",
+                            )}
                           </span>
                         ) : null}
                         <Search className="size-4 text-slate-500" />
@@ -867,7 +888,11 @@ export function ConvectionOutboundPage() {
                                 {item.code}
                               </span>
                               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                                Stok: {formatStockDisplay(Number(item.stockBase ?? 0), item.unit || "PCS")}
+                                Stok:{" "}
+                                {formatStockDisplay(
+                                  Number(item.stockBase ?? 0),
+                                  item.unit || "PCS",
+                                )}
                               </span>
                             </div>
                             <span
