@@ -150,10 +150,6 @@ export function RiwayatPage() {
   const [rawItems, setRawItems] = useState<
     Array<{ code: string; name?: string; unit?: string }>
   >([]);
-  const [inbound, setInbound] = useState<InboundApi[]>([]);
-  const [outbound, setOutbound] = useState<OutboundApi[]>([]);
-  const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
-  const [production, setProduction] = useState<ProductionApi[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [stats, setStats] = useState<HistoryStats>({
     total: 0,
@@ -288,116 +284,7 @@ export function RiwayatPage() {
     loadHistory();
   }, [loadHistory]);
 
-  const movements: Movement[] = useMemo(() => {
-    const nameMap = new Map(
-      [...items, ...rawItems].map((it) => [it.code, it.name]),
-    );
-    const mapLines = (
-      rows: Array<InboundApi | OutboundApi>,
-      direction: Movement["direction"],
-    ): Movement[] =>
-      rows.flatMap((rec) => {
-        const sourceDate = rec.createdAt ?? rec.date ?? "";
-        return rec.lines.map((line, idx) => ({
-          id: `${direction}-${rec.id}-${idx}-${line.code}`,
-          direction,
-          kind: "Barang" as const,
-          category: "Barang" as const,
-          txCode: rec.code ?? "-",
-          recordId: rec.id,
-          itemCode: line.code,
-          name: line.name ?? nameMap.get(line.code) ?? line.code,
-          qty: line.qty,
-          actor: resolveActor(rec.createdBy),
-          time: formatDateTime(sourceDate),
-          rawTime: sourceDate,
-          timestamp: Date.parse(sourceDate) || 0,
-          note: line.note ?? rec.note,
-        }));
-      });
-
-    const rawLines = rawOutbound
-      .filter((rec) => rec.status === "RECEIVED")
-      .flatMap((rec) => {
-        const sourceDate = rec.createdAt ?? rec.date ?? "";
-        return rec.lines
-          .filter((line) => line.status === "RECEIVED" || !line.status)
-          .map((line, idx) => {
-            const code = line.materialCode ?? "";
-            const name = line.materialName ?? nameMap.get(code) ?? code;
-            return {
-              id: `Bahan-${rec.id}-${idx}-${code}`,
-              direction: "Keluar" as const,
-              kind: "Bahan" as const,
-              category: "Bahan baku" as const,
-              txCode: rec.code ?? "-",
-              recordId: rec.id,
-              itemCode: code,
-              name,
-              qty: line.qty,
-              actor: resolveActor(rec.createdBy),
-              time: formatDateTime(sourceDate),
-              rawTime: sourceDate,
-              timestamp: Date.parse(sourceDate) || 0,
-              note: line.note ?? rec.note ?? undefined,
-              batchCode: line.batchCode,
-            };
-          });
-      });
-
-    const productionFinished = production.flatMap((rec) => {
-      const sourceDate = rec.createdAt ?? rec.date ?? "";
-      return rec.finishedLines.map((line, idx) => ({
-        id: `ProdIn-${rec.id}-${idx}-${line.code}`,
-        direction: "Masuk" as const,
-        kind: "Barang" as const,
-        category: "Produksi" as const,
-        txCode: rec.code ?? "-",
-        recordId: rec.id,
-        itemCode: line.code,
-        name: line.name ?? nameMap.get(line.code) ?? line.code,
-        qty: line.qty,
-        actor: undefined,
-        time: formatDateTime(sourceDate),
-        rawTime: sourceDate,
-        timestamp: Date.parse(sourceDate) || 0,
-        note: line.note ?? rec.note ?? undefined,
-      }));
-    });
-
-    const productionRaw = production.flatMap((rec) => {
-      const sourceDate = rec.createdAt ?? rec.date ?? "";
-      return rec.rawLines.map((line, idx) => ({
-        id: `ProdOut-${rec.id}-${idx}-${line.code}`,
-        direction: "Keluar" as const,
-        kind: "Bahan" as const,
-        category: "Produksi" as const,
-        txCode: rec.code ?? "-",
-        recordId: rec.id,
-        itemCode: line.code,
-        name: line.name ?? nameMap.get(line.code) ?? line.code,
-        qty: line.qty,
-        actor: undefined,
-        time: formatDateTime(sourceDate),
-        rawTime: sourceDate,
-        timestamp: Date.parse(sourceDate) || 0,
-        note: line.note ?? rec.note ?? undefined,
-      }));
-    });
-
-    const combined = [
-      ...mapLines(inbound, "Masuk"),
-      ...mapLines(outbound, "Keluar"),
-      ...rawLines,
-      ...productionFinished,
-      ...productionRaw,
-    ];
-
-    return combined.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inbound, outbound, rawOutbound, production, items, rawItems]);
-
-  const stats = useMemo(() => {
-    const total = movements.length;
+  const statsSummary = useMemo(() => {
     const inboundRows = movements.filter((m) => m.direction === "Masuk");
     const outboundRows = movements.filter((m) => m.direction === "Keluar");
     const outboundGoods = outboundRows.filter((m) => m.kind === "Barang");
@@ -416,16 +303,16 @@ export function RiwayatPage() {
     };
 
     return {
-      total,
-      inboundCount: inboundRows.length,
-      outboundCount: outboundRows.length,
-      outboundGoodsCount: outboundGoods.length,
-      outboundRawCount: outboundRaw.length,
+      total: stats.total,
+      inboundCount: stats.inboundCount,
+      outboundCount: stats.outboundCount,
+      outboundGoodsCount: stats.outboundGoodsCount,
+      outboundRawCount: stats.outboundRawCount,
       inboundQtyText: sumByUnitText(inboundRows),
       outboundGoodsQtyText: sumByUnitText(outboundGoods),
       outboundRawQtyText: sumByUnitText(outboundRaw),
     };
-  }, [movements, unitByCode]);
+  }, [movements, stats, unitByCode]);
 
   // Draft API belum tersedia di halaman ini; kosongkan agar kompilasi tetap aman
   const drafts = useMemo<DraftApi[]>(() => [], []);
@@ -492,18 +379,6 @@ export function RiwayatPage() {
         row.note ?? "",
       ];
     });
-    const data: Array<Array<string | number>> = rows.map((row) => [
-      row.txCode,
-      toDateOnly(row.rawTime, formatDateTime(row.rawTime)),
-      row.itemCode,
-      row.name,
-      Math.abs(row.qty),
-      "pcs",
-      row.actor ?? "",
-      row.kind,
-      row.batchCode ?? "",
-      row.note ?? "",
-    ]);
 
     return [header, ...data];
   };
@@ -698,7 +573,7 @@ export function RiwayatPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-muted-foreground">Total transaksi</p>
-          <p className="mt-1 text-2xl font-semibold">{stats.total}</p>
+          <p className="mt-1 text-2xl font-semibold">{statsSummary.total}</p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2">
@@ -710,10 +585,10 @@ export function RiwayatPage() {
                 Barang masuk (baris)
               </p>
               <p className="text-lg font-semibold">
-                {stats.inboundCount} baris
+                {statsSummary.inboundCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.inboundQtyText}
+                {statsSummary.inboundQtyText}
               </p>
             </div>
           </div>
@@ -728,10 +603,10 @@ export function RiwayatPage() {
                 Barang keluar (baris)
               </p>
               <p className="text-lg font-semibold">
-                {stats.outboundGoodsCount} baris
+                {statsSummary.outboundGoodsCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundGoodsQtyText}
+                {statsSummary.outboundGoodsQtyText}
               </p>
             </div>
           </div>
@@ -744,10 +619,10 @@ export function RiwayatPage() {
             <div>
               <p className="text-sm text-muted-foreground">Bahan baku keluar</p>
               <p className="text-lg font-semibold">
-                {stats.outboundRawCount} baris
+                {statsSummary.outboundRawCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundRawQtyText}
+                {statsSummary.outboundRawQtyText}
               </p>
             </div>
           </div>

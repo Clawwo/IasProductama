@@ -44,6 +44,11 @@ const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
 const RAW_URL = `${API_BASE}/api/raw-materials`;
 const OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
 const DRAFTS_URL = `${API_BASE}/api/drafts`;
+const DEFAULT_BATCH_CODE = "BENGKEL";
+
+function getTodayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 type RawMaterial = {
   code: string;
@@ -54,6 +59,10 @@ type RawMaterial = {
   unit?: string;
   stock: number;
 };
+
+function getRawTypeValue(item: { kind?: string; subCategory?: string }) {
+  return String(item.kind ?? item.subCategory ?? "").trim();
+}
 
 type OutboundLine = {
   id: string;
@@ -99,7 +108,8 @@ type ToastVariant = "default" | "destructive";
 
 export function RawMaterialsOutboundTrackingPage() {
   const [artisan, setArtisan] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [today, setToday] = useState(() => getTodayIsoDate());
+  const [date, setDate] = useState(() => getTodayIsoDate());
   const [note, setNote] = useState("");
   const [lineForm, setLineForm] = useState<LineFormState>({
     id: "",
@@ -108,12 +118,13 @@ export function RawMaterialsOutboundTrackingPage() {
     category: "",
     subCategory: "",
     kind: "",
-    batchCode: "",
+    batchCode: DEFAULT_BATCH_CODE,
     qty: "1",
     note: "",
   });
   const [lines, setLines] = useState<LineForm[]>([]);
   const [rawItems, setRawItems] = useState<RawMaterial[]>([]);
+  const [rawType, setRawType] = useState("all");
   const [outbounds, setOutbounds] = useState<OutboundRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,6 +141,16 @@ export function RawMaterialsOutboundTrackingPage() {
     message: string;
   } | null>(null);
 
+  useEffect(() => {
+    const tick = () => {
+      const next = getTodayIsoDate();
+      setToday((prev) => (prev === next ? prev : next));
+      setDate((prev) => (prev < next ? next : prev));
+    };
+    const interval = window.setInterval(tick, 60000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const resetLineForm = () => {
     setLineForm({
       id: "",
@@ -138,7 +159,7 @@ export function RawMaterialsOutboundTrackingPage() {
       category: "",
       subCategory: "",
       kind: "",
-      batchCode: "",
+      batchCode: DEFAULT_BATCH_CODE,
       qty: "1",
       note: "",
     });
@@ -218,7 +239,10 @@ export function RawMaterialsOutboundTrackingPage() {
             id: crypto.randomUUID(),
             code: typeof line.code === "string" ? line.code : "",
             name: typeof line.name === "string" ? line.name : "",
-            batchCode: typeof line.batchCode === "string" ? line.batchCode : "",
+            batchCode:
+              typeof line.batchCode === "string" && line.batchCode.trim()
+                ? line.batchCode
+                : DEFAULT_BATCH_CODE,
             qty:
               typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
             note: typeof line.note === "string" ? line.note : undefined,
@@ -252,6 +276,15 @@ export function RawMaterialsOutboundTrackingPage() {
     return map;
   }, [rawItems]);
 
+  const rawTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    rawItems.forEach((item) => {
+      const value = getRawTypeValue(item);
+      if (value) set.add(value);
+    });
+    return ["all", ...Array.from(set).sort()];
+  }, [rawItems]);
+
   const selectedUnit = useMemo(() => {
     const code = lineForm.code.trim();
     return normalizeItemUnit(rawLookup.get(code)?.unit);
@@ -259,11 +292,13 @@ export function RawMaterialsOutboundTrackingPage() {
 
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return rawItems;
-    return rawItems.filter((item) =>
-      `${item.code} ${item.name ?? ""}`.toLowerCase().includes(term),
-    );
-  }, [rawItems, searchTerm]);
+    return rawItems.filter((item) => {
+      const typeValue = getRawTypeValue(item);
+      if (rawType !== "all" && typeValue !== rawType) return false;
+      if (!term) return true;
+      return `${item.code} ${item.name ?? ""}`.toLowerCase().includes(term);
+    });
+  }, [rawItems, searchTerm, rawType]);
 
   const pendingOutbounds = useMemo(
     () => outbounds.filter((rec) => rec.lines.some((l) => l.status === "OUT")),
@@ -272,7 +307,7 @@ export function RawMaterialsOutboundTrackingPage() {
 
   useEffect(() => {
     setHighlightIndex(0);
-  }, [searchTerm]);
+  }, [searchTerm, rawType]);
 
   const handleLineSelect = (code: string) => {
     const trimmed = code.trim();
@@ -289,10 +324,8 @@ export function RawMaterialsOutboundTrackingPage() {
 
   const validateLine = (line: LineFormState | LineForm) => {
     const code = line.code.trim();
-    const batch = line.batchCode.trim();
     if (!code) return "Pilih kode bahan baku.";
     if (!rawLookup.has(code)) return "Kode tidak dikenal. Pilih dari daftar.";
-    if (!batch) return "Batch wajib diisi.";
 
     const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
     if (typeof line.qty === "string") {
@@ -312,7 +345,7 @@ export function RawMaterialsOutboundTrackingPage() {
       return;
     }
     const code = lineForm.code.trim();
-    const batch = lineForm.batchCode.trim();
+    const batch = lineForm.batchCode.trim() || DEFAULT_BATCH_CODE;
     const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
     const parsed = parseInputToBaseQty(lineForm.qty, unit);
     if (!parsed.ok) {
@@ -323,9 +356,7 @@ export function RawMaterialsOutboundTrackingPage() {
     const matched = rawLookup.get(code);
     setFormError(null);
     setLines((prev) => {
-      const existingIndex = prev.findIndex(
-        (line) => line.code === code && line.batchCode.trim() === batch,
-      );
+      const existingIndex = prev.findIndex((line) => line.code === code);
       if (existingIndex >= 0) {
         const next = [...prev];
         next[existingIndex] = {
@@ -371,7 +402,7 @@ export function RawMaterialsOutboundTrackingPage() {
         category: line.category || undefined,
         subCategory: line.subCategory || undefined,
         kind: line.kind || undefined,
-        batchCode: line.batchCode,
+        batchCode: line.batchCode || DEFAULT_BATCH_CODE,
         qty: line.qty,
         note: line.note || undefined,
       })),
@@ -431,7 +462,7 @@ export function RawMaterialsOutboundTrackingPage() {
           category: line.category || undefined,
           subCategory: line.subCategory || undefined,
           kind: line.kind || undefined,
-          batchCode: line.batchCode,
+          batchCode: line.batchCode || DEFAULT_BATCH_CODE,
           qty: line.qty,
           note: line.note || undefined,
         })),
@@ -505,6 +536,10 @@ export function RawMaterialsOutboundTrackingPage() {
           >
             {draftSaving ? "Menyimpan..." : "Simpan draft"}
           </Button>
+          <Button onClick={submitOutbound} disabled={saving} className="gap-2">
+            <CheckCircle2 className="size-4" />
+            {saving ? "Menyimpan..." : "Simpan keluar"}
+          </Button>
           <Button variant="outline" className="gap-2" onClick={loadOutbounds}>
             <RefreshCw className="size-4" />
             Refresh
@@ -550,6 +585,7 @@ export function RawMaterialsOutboundTrackingPage() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              min={today}
             />
           </div>
           <div>
@@ -566,8 +602,21 @@ export function RawMaterialsOutboundTrackingPage() {
 
         <Separator className="my-4" />
 
-        <div className="grid gap-3 md:grid-cols-6">
-          <div className="md:col-span-2">
+        <div
+          className="grid grid-cols-1 gap-3 md:items-end md:grid-cols-(--cols)"
+          style={{ ["--cols" as string]: "1fr 1fr 2.2fr 0.9fr 1.4fr auto" }}
+        >
+          <Button variant="outline" className="justify-between" disabled>
+            <span className="truncate text-left">Bahan Baku</span>
+            <Search className="size-4 text-slate-500" />
+          </Button>
+          <FilterDropdown
+            label="Jenis"
+            value={rawType}
+            options={rawTypeOptions}
+            onSelect={setRawType}
+          />
+          <div>
             <label className="text-xs font-medium text-muted-foreground">
               Kode bahan baku
             </label>
@@ -637,7 +686,11 @@ export function RawMaterialsOutboundTrackingPage() {
                             {item.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {formatBaseQtyWithUnit(item.stock ?? 0, normalizeItemUnit(item.unit))}
+                            Stok:{" "}
+                            {formatBaseQtyWithUnit(
+                              item.stock ?? 0,
+                              normalizeItemUnit(item.unit),
+                            )}
                           </span>
                         </div>
                         <span className="text-xs text-slate-600 truncate max-w-72">
@@ -654,30 +707,6 @@ export function RawMaterialsOutboundTrackingPage() {
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Nama
-            </label>
-            <Input
-              value={lineForm.name}
-              onChange={(e) =>
-                setLineForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="Nama"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Batch
-            </label>
-            <Input
-              value={lineForm.batchCode}
-              onChange={(e) =>
-                setLineForm((prev) => ({ ...prev, batchCode: e.target.value }))
-              }
-              placeholder="Batch"
-            />
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">
@@ -708,16 +737,14 @@ export function RawMaterialsOutboundTrackingPage() {
               placeholder="Opsional"
             />
           </div>
-        </div>
-        <div className="mt-3 flex items-center gap-2">
           <Button type="button" onClick={addLine} className="gap-2">
             <Plus className="size-4" />
-            Tambah baris
+            Tambah
           </Button>
-          {formError ? (
-            <span className="text-sm text-rose-600">{formError}</span>
-          ) : null}
         </div>
+        {formError ? (
+          <div className="text-sm text-rose-600">{formError}</div>
+        ) : null}
 
         <div className="mt-4 rounded-lg border">
           <Table>
@@ -725,7 +752,6 @@ export function RawMaterialsOutboundTrackingPage() {
               <TableRow>
                 <TableHead>Kode</TableHead>
                 <TableHead>Nama</TableHead>
-                <TableHead>Batch</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
                 <TableHead>Catatan</TableHead>
                 <TableHead></TableHead>
@@ -735,7 +761,7 @@ export function RawMaterialsOutboundTrackingPage() {
               {lines.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={5}
                     className="text-center text-sm text-muted-foreground"
                   >
                     Belum ada baris bahan baku.
@@ -745,8 +771,9 @@ export function RawMaterialsOutboundTrackingPage() {
                 lines.map((line) => (
                   <TableRow key={line.id}>
                     <TableCell>{line.code}</TableCell>
-                    <TableCell>{line.name || "-"}</TableCell>
-                    <TableCell>{line.batchCode}</TableCell>
+                    <TableCell>
+                      {line.name || rawLookup.get(line.code)?.name || "-"}
+                    </TableCell>
                     <TableCell className="text-right">
                       {formatBaseQtyWithUnit(
                         line.qty,
@@ -768,13 +795,6 @@ export function RawMaterialsOutboundTrackingPage() {
               )}
             </TableBody>
           </Table>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <Button onClick={submitOutbound} disabled={saving} className="gap-2">
-            <CheckCircle2 className="size-4" />
-            {saving ? "Menyimpan..." : "Simpan keluar"}
-          </Button>
         </div>
       </div>
 
@@ -841,7 +861,6 @@ export function RawMaterialsOutboundTrackingPage() {
                       <TableRow>
                         <TableHead>Kode</TableHead>
                         <TableHead>Nama</TableHead>
-                        <TableHead>Batch</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Admin</TableHead>
@@ -853,7 +872,6 @@ export function RawMaterialsOutboundTrackingPage() {
                         <TableRow key={line.id}>
                           <TableCell>{line.materialCode}</TableCell>
                           <TableCell>{line.materialName || "-"}</TableCell>
-                          <TableCell>{line.batchCode}</TableCell>
                           <TableCell className="text-right">
                             {line.qty}
                           </TableCell>
@@ -900,5 +918,39 @@ export function RawMaterialsOutboundTrackingPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function FilterDropdown<T extends string>({
+  label,
+  value,
+  options,
+  onSelect,
+}: {
+  label: string;
+  value: T;
+  options: T[];
+  onSelect: (v: T) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" className="justify-between">
+          <span className="truncate text-left">
+            {value === "all" ? `${label}: semua` : `${label}: ${value}`}
+          </span>
+          <Search className="size-4 text-slate-500" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {options.map((opt) => (
+          <DropdownMenuItem key={opt} onSelect={() => onSelect(opt)}>
+            {opt === "all" ? "Semua" : opt}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
