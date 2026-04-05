@@ -465,9 +465,9 @@ export function RawMaterialsPage({ readOnly }: { readOnly?: boolean }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">
-            Daftar bahan baku produksi
+            Stok bahan baku produksi
           </p>
-          <h1 className="text-2xl font-semibold leading-tight">Barang Baku</h1>
+          <h1 className="text-2xl font-semibold leading-tight">Bahan Baku</h1>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
               <div className="flex h-9 w-9 items-center justify-center rounded-md bg-sky-50 text-sky-600">

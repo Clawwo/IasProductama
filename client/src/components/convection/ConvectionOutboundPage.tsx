@@ -1,4 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { httpJson, toUserMessage } from "@/lib/http";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +25,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -40,9 +52,7 @@ import {
   User,
   StickyNote,
   Search,
-  AlertCircle,
   AlertTriangle,
-  Loader2,
 } from "lucide-react";
 
 type Env = { VITE_API_BASE?: string };
@@ -165,7 +175,6 @@ export function ConvectionOutboundPage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -204,20 +213,6 @@ export function ConvectionOutboundPage() {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4200);
   }
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   // Load all items on mount
   useEffect(() => {
@@ -276,7 +271,9 @@ export function ConvectionOutboundPage() {
                   ? l.unit
                   : resolveDefaultUnit(
                       allItems.find(
-                        (it) => it.code === (typeof l.code === "string" ? l.code : ""),
+                        (it) =>
+                          it.code ===
+                          (typeof l.code === "string" ? l.code : ""),
                       ) ?? null,
                     ),
               note: typeof l.note === "string" ? l.note : undefined,
@@ -304,11 +301,15 @@ export function ConvectionOutboundPage() {
       pushToast(
         "default",
         "Draft dimuat",
-        "Data draft barang keluar telah dimuat ke formulir."
+        "Data draft barang keluar telah dimuat ke formulir.",
       );
     } catch {
       setFormError("Draft tidak bisa dibaca");
-      pushToast("destructive", "Gagal memuat draft", "Draft tidak bisa dibaca.");
+      pushToast(
+        "destructive",
+        "Gagal memuat draft",
+        "Draft tidak bisa dibaca.",
+      );
     } finally {
       sessionStorage.removeItem("draft:pending-load");
     }
@@ -331,6 +332,16 @@ export function ConvectionOutboundPage() {
       item.name?.toLowerCase().includes(term)
     );
   });
+
+  const visibleItems = useMemo(() => filteredItems.slice(0, 50), [filteredItems]);
+
+  const stockBadgeClass = useMemo(() => {
+    if (!selectedItem) return "border-slate-200 bg-slate-50 text-slate-600";
+    const stock = Number(selectedItem.stockBase ?? 0);
+    if (stock <= 0) return "border-red-200 bg-red-50 text-red-700";
+    if (stock < 5) return "border-amber-200 bg-amber-50 text-amber-700";
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }, [selectedItem]);
 
   // Handle item selection
   const handleSelectItem = (item: ConvectionItem) => {
@@ -400,24 +411,32 @@ export function ConvectionOutboundPage() {
     setSearchTerm("");
     setSelectedItem(null);
     setFormError("");
-    
+
     if (hasWarning) {
       pushToast(
         "destructive",
         "⚠️ Stok Terbatas",
-        `${lineItem.name}: ${qty} > Stok ${stockAvailable}`
+        `${lineItem.name}: ${qty} > Stok ${stockAvailable}`,
       );
     } else {
-      pushToast("default", "Barang ditambahkan", `${lineItem.name} ditambahkan ke daftar.`);
+      pushToast(
+        "default",
+        "Barang ditambahkan",
+        `${lineItem.name} ditambahkan ke daftar.`,
+      );
     }
   };
 
   // Remove line
   const handleRemoveLine = (id: string) => {
-    const line = lines.find(l => l.id === id);
+    const line = lines.find((l) => l.id === id);
     setLines((prev) => prev.filter((line) => line.id !== id));
     setConfirmRemoveId(null);
-    pushToast("default", "Barang dihapus", `${line?.name} dihapus dari daftar.`);
+    pushToast(
+      "default",
+      "Barang dihapus",
+      `${line?.name} dihapus dari daftar.`,
+    );
   };
 
   // Submit form
@@ -450,6 +469,7 @@ export function ConvectionOutboundPage() {
 
       await httpJson(OUTBOUND_URL, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -458,7 +478,7 @@ export function ConvectionOutboundPage() {
       pushToast(
         "default",
         "Data tersimpan",
-        `${lines.length} barang telah berhasil dikeluarkan.`
+        `${lines.length} barang telah berhasil dikeluarkan.`,
       );
 
       // Reload items to reflect updated stock
@@ -520,7 +540,7 @@ export function ConvectionOutboundPage() {
       pushToast(
         "default",
         isUpdate ? "Draft diperbarui" : "Draft tersimpan",
-        `Data draft ${lines.length} barang telah disimpan.`
+        `Data draft ${lines.length} barang telah disimpan.`,
       );
     } catch (err: unknown) {
       const message = toUserMessage(err, "Gagal menyimpan draft");
@@ -538,15 +558,15 @@ export function ConvectionOutboundPage() {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightIndex((prev) =>
-        prev < filteredItems.length - 1 ? prev + 1 : prev,
+        prev < visibleItems.length - 1 ? prev + 1 : prev,
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightIndex((prev) => (prev > 0 ? prev - 1 : 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (filteredItems[highlightIndex]) {
-        handleSelectItem(filteredItems[highlightIndex]);
+      if (visibleItems[highlightIndex]) {
+        handleSelectItem(visibleItems[highlightIndex]);
       }
     } else if (e.key === "Escape") {
       setDropdownOpen(false);
@@ -561,49 +581,30 @@ export function ConvectionOutboundPage() {
     totalQty: lines.reduce((sum, l) => sum + l.qty, 0),
   };
 
-  const handleSearchFocus = () => {
-    setDropdownOpen(true);
-    fetchItems().catch(() => {});
-  };
+  const lineToRemove =
+    lines.find((line) => line.id === confirmRemoveId) ?? null;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Toast Notifications */}
-      <div className="fixed right-4 top-4 z-50 space-y-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={cn(
-              "rounded-lg px-4 py-3 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-right-4 duration-300",
-              toast.variant === "default"
-                ? "bg-emerald-50 text-emerald-900 border border-emerald-200"
-                : "bg-red-50 text-red-900 border border-red-200"
-            )}
-          >
-            <div className="font-semibold">{toast.title}</div>
-            {toast.message && (
-              <div className="text-xs opacity-90 mt-1">{toast.message}</div>
-            )}
-          </div>
-        ))}
-      </div>
+    <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
+      <ToastRegion toasts={toasts} />
 
-      {/* Confirmation Dialogs */}
       <AlertDialog open={confirmSubmitOpen} onOpenChange={setConfirmSubmitOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Konfirmasi Pengeluaran</AlertDialogTitle>
+            <AlertDialogTitle>Konfirmasi simpan</AlertDialogTitle>
             <AlertDialogDescription>
-              Anda akan mengeluarkan {totals.totalItem} barang ke{" "}
-              <span className="font-semibold">{receiver}</span> dengan total{" "}
-              <span className="font-semibold">{totals.totalQty.toFixed(2)}</span>{" "}
-              unit. Lanjutkan?
+              Simpan pencatatan barang keluar konveksi ini?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSubmit}>
-              Simpan
+            <AlertDialogAction
+              onClick={() => {
+                setConfirmSubmitOpen(false);
+                handleSubmit();
+              }}
+            >
+              Ya, simpan
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -611,13 +612,17 @@ export function ConvectionOutboundPage() {
 
       <AlertDialog
         open={Boolean(confirmRemoveId)}
-        onOpenChange={() => setConfirmRemoveId(null)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRemoveId(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hapus Barang</AlertDialogTitle>
+            <AlertDialogTitle>Hapus baris ini?</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus barang ini dari daftar?
+              {lineToRemove
+                ? `${lineToRemove.code} - ${lineToRemove.name}`
+                : "Baris barang akan dihapus dari daftar."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -628,7 +633,6 @@ export function ConvectionOutboundPage() {
                   handleRemoveLine(confirmRemoveId);
                 }
               }}
-              className="bg-red-600 hover:bg-red-700"
             >
               Hapus
             </AlertDialogAction>
@@ -636,402 +640,466 @@ export function ConvectionOutboundPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Barang Keluar Konveksi</h1>
-        <p className="text-sm text-muted-foreground">
-          Isi data dari atas ke bawah: info umum, pilih barang, lalu simpan.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">Status draft: {draftStatus}</p>
-      </div>
-
-      {/* Header Info */}
-      <div className="grid gap-6 rounded-lg border p-6 md:grid-cols-3">
-        <div className="md:col-span-3 text-sm font-semibold text-slate-700">1. Informasi Umum</div>
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <User className="h-4 w-4" />
-            Penerima
-          </label>
-          <Input
-            type="text"
-            placeholder="Nama penerima"
-            value={receiver}
-            onChange={(e) => setReceiver(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <Calendar className="h-4 w-4" />
-            Tanggal
-          </label>
-          <Input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <StickyNote className="h-4 w-4" />
-            Catatan
-          </label>
-          <Input
-            type="text"
-            placeholder="Catatan (opsional)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Add Item Form */}
-      <div className="rounded-lg border p-6 mt-8">
-        <h3 className="mb-2 font-semibold">2. Tambah Barang</h3>
-        <p className="mb-8 text-sm text-muted-foreground">Pilih kategori, cari barang, isi jumlah, lalu tekan tombol tambah (+).</p>
-
-        {/* Row 1: Category & Sub Category */}
-        <div className="grid gap-6 md:grid-cols-2 mb-8">
-          <div>
-            <label className="mb-2 block text-sm font-medium">Kategori</label>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Semua kategori" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {cat === "all" ? "Semua kategori" : cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">Sub Kategori</label>
-            <Select
-              value={selectedSubCategory}
-              onValueChange={setSelectedSubCategory}
-              disabled={subCategories.length <= 1}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Semua sub kategori" />
-              </SelectTrigger>
-              <SelectContent>
-                {subCategories.map((sub) => (
-                  <SelectItem key={sub} value={sub}>
-                    {sub === "all" ? "Semua sub kategori" : sub}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Row 2: Item Picker */}
-        <div ref={dropdownRef} className="relative mb-8">
-          <label className="mb-2 block text-sm font-medium">Barang</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Cari kode atau nama..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setDropdownOpen(true);
-                setHighlightIndex(0);
-              }}
-              onFocus={handleSearchFocus}
-              onKeyDown={handleKeyDown}
-              className="pl-9"
-            />
-          </div>
-
-          {/* Dropdown */}
-          {dropdownOpen && filteredItems.length > 0 && (
-            <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-white shadow-lg">
-              {filteredItems.slice(0, 20).map((item, idx) => (
-                <button
-                  key={item.code}
-                  className={cn(
-                    "w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100",
-                    idx === highlightIndex && "bg-gray-100",
-                  )}
-                  onClick={() => handleSelectItem(item)}
-                  onMouseEnter={() => setHighlightIndex(idx)}
-                >
-                  <div className="flex items-baseline gap-2 justify-between">
-                    <div className="font-mono font-semibold text-slate-900">{item.code}</div>
-                    <div className="text-xs text-slate-500">
-                      {formatStockDisplay(Number(item.stockBase ?? 0), item.unit || "PCS")}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">{item.name}</div>
-                </button>
-              ))}
+      <div className="space-y-6">
+        <header className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
+                Konveksi
+              </p>
+              <h1 className="text-3xl font-semibold text-slate-900 leading-tight">
+                Barang Keluar Konveksi
+              </h1>
+              <p className="text-sm text-slate-600">
+                Catat barang keluar konveksi dengan alur yang sama seperti
+                transaksi gudang.
+              </p>
             </div>
-          )}
-        </div>
-
-        {/* Row 3: Quantity, Unit, Note, Button */}
-        <div className="grid gap-6 md:grid-cols-12">
-          {/* Quantity */}
-          <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-medium">Jumlah</label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Jumlah"
-              value={lineItem.qty}
-              onChange={(e) =>
-                setLineItem((prev) => ({ ...prev, qty: e.target.value }))
-              }
-            />
+            <div className="ml-auto flex items-center gap-2">
+              <Badge variant="secondary" className="rounded-full px-3">
+                Draft
+              </Badge>
+              <Button
+                variant="outline"
+                className="border-dashed cursor-pointer"
+                disabled={submitStatus === "loading" || draftSaving}
+                onClick={handleSaveDraft}
+              >
+                <Save className="size-4" />
+                {draftSaving ? "Menyimpan..." : "Simpan draft"}
+              </Button>
+              <Button
+                disabled={
+                  submitStatus === "loading" ||
+                  lines.length === 0 ||
+                  !receiver.trim()
+                }
+                className="cursor-pointer"
+                onClick={() => setConfirmSubmitOpen(true)}
+              >
+                <CheckCircle className="size-4" /> Tandai selesai
+              </Button>
+            </div>
           </div>
 
-          {/* Unit */}
-          <div className="md:col-span-2">
-            <label className="mb-2 block text-sm font-medium">Satuan</label>
-            <Select
-              value={lineItem.unit}
-              onValueChange={handleUnitChange}
-              disabled={!selectedItem}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryCard
+              label="Status Draft"
+              value={draftStatus}
+              sub="Simpan draft tanpa mengurangi stok"
+            />
+            <SummaryCard
+              label="Total item"
+              value={String(totals.totalItem)}
+              sub="Baris keluar"
+            />
+            <SummaryCard
+              label="Total qty (unit)"
+              value={totals.totalQty.toFixed(2)}
+              sub="Semua baris"
+            />
+            <SummaryCard
+              label="Tanggal"
+              value={date || "-"}
+              sub="Tanggal keluar"
+            />
+          </div>
+        </header>
+
+        <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <LabeledInput
+              label="Tanggal keluar"
+              icon={<Calendar className="size-4" />}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih barang dulu" />
-              </SelectTrigger>
-              <SelectContent>
-                {getAvailableUnits(selectedItem).map((unit) => (
-                  <SelectItem key={unit} value={unit}>
-                    {getUnitDisplayName(unit)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </LabeledInput>
+            <LabeledInput label="Penerima" icon={<User className="size-4" />}>
+              <Input
+                placeholder="Nama penerima"
+                value={receiver}
+                onChange={(e) => setReceiver(e.target.value)}
+              />
+            </LabeledInput>
+            <LabeledInput
+              label="Catatan"
+              icon={<StickyNote className="size-4" />}
+            >
+              <Input
+                placeholder="Opsional"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </LabeledInput>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Baris barang
+              </p>
+              <p className="text-sm text-slate-600">
+                Tambahkan bahan konveksi yang keluar beserta jumlah dan satuan.
+              </p>
+            </div>
+            <Badge variant="outline" className="ml-auto rounded-full px-3 py-1">
+              {filteredItems.length} barang tersedia
+            </Badge>
           </div>
 
-          {/* Note */}
-          <div className="md:col-span-6">
-            <label className="mb-2 block text-sm font-medium">
-              Catatan (opsional)
-            </label>
-            <Input
-              type="text"
-              placeholder="Catatan item"
-              value={lineItem.note}
-              onChange={(e) =>
-                setLineItem((prev) => ({ ...prev, note: e.target.value }))
-              }
-            />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-end xl:grid-cols-12">
+            <div className="min-w-0 md:col-span-1 xl:col-span-2">
+              <LabeledInput label="Kategori">
+                <Select
+                  value={selectedCategory}
+                  onValueChange={setSelectedCategory}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Semua kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat === "all" ? "Semua kategori" : cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LabeledInput>
+            </div>
+
+            <div className="min-w-0 md:col-span-1 xl:col-span-2">
+              <LabeledInput label="Sub kategori">
+                <Select
+                  value={selectedSubCategory}
+                  onValueChange={setSelectedSubCategory}
+                  disabled={subCategories.length <= 1}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="Semua sub kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subCategories.map((sub) => (
+                      <SelectItem key={sub} value={sub}>
+                        {sub === "all" ? "Semua sub kategori" : sub}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LabeledInput>
+            </div>
+
+            <div className="min-w-0 md:col-span-2 xl:col-span-4">
+              <LabeledInput
+                label="Pilih / cari barang"
+                icon={<Search className="size-4" />}
+              >
+                <DropdownMenu
+                  open={dropdownOpen}
+                  onOpenChange={(open) => {
+                    setDropdownOpen(open);
+                    if (open) {
+                      fetchItems().catch(() => {});
+                    }
+                  }}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="h-11 w-full justify-between">
+                      <span className="truncate text-left">
+                        {lineItem.name
+                          ? `${lineItem.code} - ${lineItem.name}`
+                          : "Pilih / cari barang"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {lineItem.name ? (
+                          <span
+                            className={cn(
+                              "shrink-0 rounded-full border px-2 py-0.5 text-xs",
+                              stockBadgeClass,
+                            )}
+                          >
+                            Stok: {formatStockDisplay(Number(selectedItem?.stockBase ?? 0), selectedItem?.unit || "PCS")}
+                          </span>
+                        ) : null}
+                        <Search className="size-4 text-slate-500" />
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    className="w-104 max-w-[calc(100vw-2rem)] p-0"
+                  >
+                    <div className="p-2">
+                      <Input
+                        autoFocus
+                        placeholder="Ketik nama atau kode"
+                        value={searchTerm}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setHighlightIndex(0);
+                        }}
+                        onKeyDown={handleKeyDown}
+                        className="h-9"
+                      />
+                    </div>
+                    <DropdownMenuSeparator />
+                    <div className="max-h-64 overflow-y-auto">
+                      {visibleItems.map((item, idx) => (
+                        <DropdownMenuItem
+                          key={item.code}
+                          className={
+                            highlightIndex === idx ? "bg-slate-100" : undefined
+                          }
+                          onSelect={() => handleSelectItem(item)}
+                        >
+                          <div className="flex w-full flex-col gap-0.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span
+                                className="max-w-60 truncate font-semibold text-slate-900"
+                                title={item.code}
+                              >
+                                {item.code}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                                Stok: {formatStockDisplay(Number(item.stockBase ?? 0), item.unit || "PCS")}
+                              </span>
+                            </div>
+                            <span
+                              className="max-w-70 truncate text-xs text-slate-600"
+                              title={item.name ?? item.code}
+                            >
+                              {item.name ?? item.code}
+                            </span>
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                      {filteredItems.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-slate-500">
+                          Barang tidak ditemukan.
+                        </div>
+                      ) : null}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </LabeledInput>
+            </div>
+
+            <div className="min-w-0 md:col-span-1 xl:col-span-1">
+              <LabeledInput label="Jumlah">
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={lineItem.qty}
+                  onChange={(e) =>
+                    setLineItem((prev) => ({ ...prev, qty: e.target.value }))
+                  }
+                />
+              </LabeledInput>
+            </div>
+
+            <div className="min-w-0 md:col-span-1 xl:col-span-1">
+              <LabeledInput label="Satuan">
+                <Select
+                  value={lineItem.unit}
+                  onValueChange={handleUnitChange}
+                  disabled={!selectedItem}
+                >
+                  <SelectTrigger className="w-full min-w-0">
+                    <SelectValue placeholder="-" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getAvailableUnits(selectedItem).map((unit) => (
+                      <SelectItem key={unit} value={unit}>
+                        {getUnitDisplayName(unit)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </LabeledInput>
+            </div>
+
+            <div className="min-w-0 md:col-span-2 xl:col-span-2">
+              <LabeledInput label="Catatan baris">
+                <Input
+                  placeholder="Opsional"
+                  value={lineItem.note}
+                  onChange={(e) =>
+                    setLineItem((prev) => ({ ...prev, note: e.target.value }))
+                  }
+                />
+              </LabeledInput>
+            </div>
           </div>
 
-          {/* Add Button */}
-          <div className="flex items-end md:col-span-2">
-            <Button onClick={handleAddLine} className="w-full">
-              <Plus className="h-4 w-4" />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {selectedItem
+                ? `Dipilih: ${selectedItem.code} - ${selectedItem.name ?? selectedItem.code}`
+                : "Belum ada barang dipilih."}
+            </p>
+            <Button onClick={handleAddLine} className="cursor-pointer">
+              <Plus className="size-4" /> Tambah baris
             </Button>
           </div>
-        </div>
 
-        <div className="mt-6">
-          <Badge variant="outline" className="px-3 py-1">
-            {filteredItems.length} barang tersedia
-          </Badge>
-        </div>
-
-        {/* Item Preview */}
-        {selectedItem && (
-          <div className="mt-6 rounded-lg bg-blue-50 p-4 border border-blue-200">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-xs font-medium text-blue-700">Barang Dipilih</p>
-                <p className="text-sm font-semibold text-slate-900">{selectedItem.name}</p>
-                <p className="text-xs text-slate-600">Kode: {selectedItem.code}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs font-medium text-blue-700">Kategori</p>
-                  <p className="text-sm text-slate-900">{selectedItem.category || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-blue-700">Stok Sekarang</p>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {formatStockDisplay(Number(selectedItem.stockBase ?? 0), selectedItem.unit || "PCS")} {resolveDefaultUnit(selectedItem)}
-                  </p>
-                </div>
-              </div>
-              {hasMeterConversion(selectedItem) && (
-                <div className="md:col-span-2">
-                  <p className="text-xs font-medium text-blue-700 mb-1">💡 Hint</p>
-                  <p className="text-xs text-blue-900">
-                    Item ini bisa satuan Meter atau Kilogram. Faktor konversi: {selectedItem.metersPerKg} meter/kg
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {formError && (
-          <Alert variant="destructive" className="mt-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{formError}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      {/* Lines Summary */}
-      {lines.length > 0 && (
-        <div className="grid gap-2 rounded-lg border bg-slate-50 p-4 sm:grid-cols-2">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted-foreground">
-              Total Barang
-            </span>
-            <span className="text-lg font-semibold">{totals.totalItem}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-muted-foreground">
-              Total Jumlah
-            </span>
-            <span className="text-lg font-semibold">
-              {totals.totalQty.toFixed(2)} unit
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Lines Table */}
-      {lines.length > 0 && (
-        <>
-          {hasAnyWarning && (
+          {hasAnyWarning ? (
             <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>⚠️ Peringatan Stok!</AlertTitle>
+              <AlertTriangle className="size-4" />
+              <AlertTitle>Peringatan stok</AlertTitle>
               <AlertDescription>
-                Beberapa barang melebihi stok tersedia. Periksa kembali jumlah yang diinput.
+                Beberapa baris melebihi stok tersedia. Periksa kembali jumlah
+                sebelum menyimpan.
               </AlertDescription>
             </Alert>
-          )}
+          ) : null}
 
-          <div className="mt-8 rounded-lg border overflow-hidden">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="w-[90px]">Kode</TableHead>
-                  <TableHead className="min-w-[200px]">Nama Barang</TableHead>
-                  <TableHead className="text-right w-[80px]">Jumlah</TableHead>
-                  <TableHead className="text-center w-[70px]">Satuan</TableHead>
-                  <TableHead className="text-right w-[80px]">Stok</TableHead>
-                  <TableHead>Catatan</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
+          {formError ? (
+            <div className="text-sm text-red-600">{formError}</div>
+          ) : null}
+          {submitStatus === "success" ? (
+            <div className="text-sm text-green-600">
+              {submitMessage || "Berhasil disimpan."}
+            </div>
+          ) : null}
+          {submitStatus === "error" ? (
+            <div className="text-sm text-red-600">
+              {submitMessage || "Gagal menyimpan."}
+            </div>
+          ) : null}
+
+          <Separator />
+
+          <Table>
+            <TableHeader className="bg-slate-50">
+              <TableRow>
+                <TableHead className="w-12">No</TableHead>
+                <TableHead>Kode</TableHead>
+                <TableHead>Nama Barang</TableHead>
+                <TableHead className="w-28">Qty</TableHead>
+                <TableHead className="w-24">Satuan</TableHead>
+                <TableHead className="w-28">Stok</TableHead>
+                <TableHead>Catatan</TableHead>
+                <TableHead className="w-16" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lines.map((line, idx) => (
+                <TableRow
+                  key={line.id}
+                  className={line.hasWarning ? "bg-red-50/60" : undefined}
+                >
+                  <TableCell className="text-slate-500">{idx + 1}</TableCell>
+                  <TableCell className="font-semibold text-slate-900">
+                    {line.code}
+                  </TableCell>
+                  <TableCell className="text-slate-800">{line.name}</TableCell>
+                  <TableCell className="font-semibold">
+                    {formatStockDisplay(line.qty, line.unit)}
+                  </TableCell>
+                  <TableCell className="text-slate-700">{line.unit}</TableCell>
+                  <TableCell className="text-slate-700">
+                    {formatStockDisplay(line.stockAvailable, line.unit)}
+                  </TableCell>
+                  <TableCell className="text-slate-600">
+                    {line.note || "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-500 hover:text-red-600"
+                      onClick={() => setConfirmRemoveId(line.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lines.map((line) => (
-                  <TableRow
-                    key={line.id}
-                    className={cn(
-                      "hover:bg-slate-50",
-                      line.hasWarning && "bg-red-50"
-                    )}
+              ))}
+              {lines.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="py-6 text-center text-sm text-slate-500"
                   >
-                    <TableCell>{line.code}</TableCell>
-                    <TableCell>{line.name}</TableCell>
-                    <TableCell className="text-right">
-                      {formatStockDisplay(line.qty, line.unit)}
-                    </TableCell>
-                    <TableCell className="text-center">{line.unit}</TableCell>
-                    <TableCell className="text-right text-sm text-muted-foreground">
-                      {formatStockDisplay(line.stockAvailable, line.unit)}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {line.note || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setConfirmRemoveId(line.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap justify-end gap-3">
-        {submitStatus === "success" && (
-          <Alert className="flex-1 border-green-500 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertTitle className="text-green-700">Berhasil!</AlertTitle>
-            <AlertDescription className="text-green-600">
-              {submitMessage}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {submitStatus === "error" && (
-          <Alert variant="destructive" className="flex-1">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Gagal!</AlertTitle>
-            <AlertDescription>{submitMessage}</AlertDescription>
-          </Alert>
-        )}
-
-        <Button
-          variant="outline"
-          onClick={handleSaveDraft}
-          disabled={submitStatus === "loading" || draftSaving}
-          className="min-w-[160px]"
-        >
-          {draftSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Menyimpan...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Simpan Draft
-            </>
-          )}
-        </Button>
-
-        <Button
-          onClick={() => setConfirmSubmitOpen(true)}
-          disabled={
-            submitStatus === "loading" ||
-            lines.length === 0 ||
-            !receiver.trim()
-          }
-          className="min-w-[180px]"
-        >
-          {submitStatus === "loading" ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Menyimpan...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Simpan Data
-            </>
-          )}
-        </Button>
+                    Belum ada baris. Tambahkan barang keluar konveksi di atas.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+            </TableBody>
+          </Table>
+        </section>
       </div>
     </div>
+  );
+}
+
+function ToastRegion({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-60 flex flex-col gap-2 sm:right-6 sm:top-6">
+      {toasts.map((toast) => (
+        <Alert
+          key={toast.id}
+          variant={toast.variant === "destructive" ? "destructive" : "default"}
+          className={cn(
+            "pointer-events-auto shadow-lg",
+            toast.variant === "destructive"
+              ? "border-red-200 bg-red-50 text-red-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900",
+          )}
+        >
+          <AlertTitle>{toast.title}</AlertTitle>
+          {toast.message ? (
+            <AlertDescription>{toast.message}</AlertDescription>
+          ) : null}
+        </Alert>
+      ))}
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+      {sub ? <p className="text-sm text-slate-600">{sub}</p> : null}
+    </div>
+  );
+}
+
+function LabeledInput({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block w-full space-y-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }

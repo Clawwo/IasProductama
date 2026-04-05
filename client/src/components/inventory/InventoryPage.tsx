@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -59,6 +60,7 @@ import * as XLSX from "xlsx";
 import {
   inferKind,
   inventoryItemsWithKind,
+  type InventoryItem,
   type InventoryItemWithKind,
 } from "./items";
 import {
@@ -89,20 +91,69 @@ type RemoteItem = {
   kind?: string;
   stock: number;
   unit?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
-export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
-  const [items, setItems] = useState<InventoryItemWithKind[]>([]);
+const allowedSubCategories: InventoryItem["subCategory"][] = [
+  "SNARE",
+  "TOM",
+  "DRUMBAND",
+  "HTS",
+  "SEMI",
+];
+
+const normalizeSubCategory = (value?: string): InventoryItem["subCategory"] => {
+  if (!value) return undefined;
+  const upper = value.trim().toUpperCase();
+  return allowedSubCategories.find((sub) => sub === upper);
+};
+
+const normalizeCategoryForFilter = (value?: string): string => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return "";
+  const upper = trimmed.toUpperCase();
+  if (upper === "PACK" || upper === "KARDUS PACKING") {
+    return "Kardus Packing";
+  }
+  return trimmed;
+};
+
+type InventoryListItem = InventoryItemWithKind & {
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type ToastVariant = "default" | "destructive";
+type Toast = {
+  id: string;
+  variant: ToastVariant;
+  title: string;
+  message?: string;
+};
+
+export function InventoryPage({
+  readOnly = false,
+  canReadRawMaterials = false,
+}: {
+  readOnly?: boolean;
+  canReadRawMaterials?: boolean;
+}) {
+  const [items, setItems] = useState<InventoryListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [recentlyEditedCode, setRecentlyEditedCode] = useState<string | null>(
+    null,
+  );
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [search, setSearch] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const perPage = 15;
   const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<InventoryItemWithKind | null>(null);
+  const [editing, setEditing] = useState<InventoryListItem | null>(null);
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -112,11 +163,14 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
   });
   const [manualCode, setManualCode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "aman" | "menipis" | "kritis"
   >("all");
-  const [pendingDelete, setPendingDelete] =
-    useState<InventoryItemWithKind | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<InventoryListItem | null>(
+    null,
+  );
   const [ringSubCategory, setRingSubCategory] = useState<
     "all" | "SNARE" | "TOM"
   >("all");
@@ -127,13 +181,34 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     "all" | "DRUMBAND" | "HTS" | "SEMI"
   >("all");
 
+  const pushToast = useCallback(
+    (variant: ToastVariant, title: string, message?: string) => {
+      const id = crypto.randomUUID();
+      setToasts((prev) => [...prev, { id, variant, title, message }]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      }, 4200);
+    },
+    [],
+  );
+
   const fetchItems = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<RemoteItem[]>([]);
       const [itemsData, rawData, productsData] = await Promise.all([
         httpJson<RemoteItem[]>(ITEMS_URL),
-        httpJson<RemoteItem[]>(RAW_URL),
+        rawPromise,
         httpJson<RemoteItem[]>(PRODUCTS_URL),
       ]);
 
@@ -182,11 +257,14 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           code,
           name: it?.name ?? base?.name ?? "",
           category: it?.category ?? base?.category ?? "",
-          subCategory: it?.subCategory ?? base?.subCategory,
+          subCategory:
+            normalizeSubCategory(it?.subCategory) ?? base?.subCategory,
           stock: it?.stock ?? base?.stock ?? 0,
-        } as InventoryItemWithKind;
+        } as InventoryListItem;
         return {
           ...merged,
+          createdAt: it?.createdAt,
+          updatedAt: it?.updatedAt,
           kind:
             (it?.kind as InventoryItemWithKind["kind"] | undefined) ??
             base?.kind ??
@@ -197,19 +275,28 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Gagal memuat data.";
       setError(message);
+      pushToast("destructive", "Gagal memuat daftar barang", message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canReadRawMaterials, pushToast]);
 
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
 
+  useEffect(() => {
+    if (!recentlyEditedCode) return;
+    const timer = window.setTimeout(() => {
+      setRecentlyEditedCode(null);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [recentlyEditedCode]);
+
   const categories = useMemo(() => {
     const set = new Set<string>();
     items.forEach((item) => {
-      const cat = (item.category || "").trim();
+      const cat = normalizeCategoryForFilter(item.category);
       if (cat) set.add(cat);
     });
     return Array.from(set).sort();
@@ -217,6 +304,11 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
+    const hasDateFilter = Boolean(fromDate || toDate);
+    const fromTimestamp = fromDate
+      ? Date.parse(`${fromDate}T00:00:00`)
+      : Number.NaN;
+    const toTimestamp = toDate ? Date.parse(`${toDate}T23:59:59`) : Number.NaN;
     return items.filter((item) => {
       const matchText =
         item.name.toLowerCase().includes(term) ||
@@ -225,6 +317,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
         selectedCategories.length === 0 ||
         selectedCategories.includes(item.category);
       const status = getStatus(item.stock, item.unit);
+        selectedCategories.includes(normalizeCategoryForFilter(item.category));
+      const status = getStatus(item.stock);
       const matchStatus = statusFilter === "all" || status === statusFilter;
       const isRing = item.kind === "RING";
       const matchRingSub =
@@ -251,6 +345,13 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
         !isProduct ||
         productSubCategory === "all" ||
         item.subCategory === productSubCategory;
+      const rawItemDate = item.updatedAt ?? item.createdAt;
+      const itemTimestamp = rawItemDate ? Date.parse(rawItemDate) : Number.NaN;
+      const matchDateRange =
+        !hasDateFilter ||
+        (!Number.isNaN(itemTimestamp) &&
+          (Number.isNaN(fromTimestamp) || itemTimestamp >= fromTimestamp) &&
+          (Number.isNaN(toTimestamp) || itemTimestamp <= toTimestamp));
       return (
         matchText &&
         matchCategory &&
@@ -259,12 +360,15 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
         matchRingSize &&
         matchRingColor &&
         matchRingHoles &&
-        matchProductSub
+        matchProductSub &&
+        matchDateRange
       );
     });
   }, [
     items,
     search,
+    fromDate,
+    toDate,
     selectedCategories,
     statusFilter,
     ringSubCategory,
@@ -370,8 +474,91 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     [pickPrefix],
   );
 
+  const splitCodeNumberSuffix = useCallback((code: string) => {
+    const upper = (code || "").trim().toUpperCase();
+    const match = upper.match(/^(.*?)(\d+)$/);
+    if (!match) return null;
+    const stem = match[1];
+    const digits = match[2];
+    const number = Number(digits);
+    if (!stem || !Number.isFinite(number)) return null;
+    return {
+      stem,
+      number,
+      pad: digits.length,
+    };
+  }, []);
+
+  const suggestFromCategoryPattern = useCallback(
+    (category: string) => {
+      const catNorm = normalizeCategory(category);
+      if (!catNorm) return "";
+
+      const existingCodes = items
+        .filter((it) => normalizeCategory(it.category) === catNorm)
+        .map((it) => it.code.toUpperCase())
+        .filter(Boolean);
+
+      if (existingCodes.length === 0) return "";
+
+      const existingSet = new Set(existingCodes);
+      const stemGroups = new Map<
+        string,
+        { count: number; max: number; pad: number }
+      >();
+
+      existingCodes.forEach((code) => {
+        const parsed = splitCodeNumberSuffix(code);
+        if (!parsed) return;
+        const prev = stemGroups.get(parsed.stem);
+        if (!prev) {
+          stemGroups.set(parsed.stem, {
+            count: 1,
+            max: parsed.number,
+            pad: parsed.pad,
+          });
+          return;
+        }
+        stemGroups.set(parsed.stem, {
+          count: prev.count + 1,
+          max: Math.max(prev.max, parsed.number),
+          pad: Math.max(prev.pad, parsed.pad),
+        });
+      });
+
+      if (stemGroups.size > 0) {
+        const [stem, meta] = Array.from(stemGroups.entries()).sort((a, b) => {
+          if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+          if (b[1].max !== a[1].max) return b[1].max - a[1].max;
+          return a[0].localeCompare(b[0]);
+        })[0];
+
+        let next = meta.max + 1;
+        let candidate = `${stem}${String(next).padStart(meta.pad, "0")}`;
+        while (existingSet.has(candidate)) {
+          next += 1;
+          candidate = `${stem}${String(next).padStart(meta.pad, "0")}`;
+        }
+        return candidate;
+      }
+
+      const seed = existingCodes[0];
+      let next = 1;
+      let candidate = `${seed}-${String(next).padStart(2, "0")}`;
+      while (existingSet.has(candidate)) {
+        next += 1;
+        candidate = `${seed}-${String(next).padStart(2, "0")}`;
+      }
+      return candidate;
+    },
+    [items, normalizeCategory, splitCodeNumberSuffix],
+  );
+
   const suggestCode = useCallback(
     (name: string, category: string) => {
+      const categoryPatternCode = suggestFromCategoryPattern(category);
+      if (categoryPatternCode) return categoryPatternCode;
+
       const base = buildCodeBase(name, category);
       if (!base) return "";
       const baseUpper = base.toUpperCase();
@@ -391,7 +578,13 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       });
       return `${baseUpper}-${String(max + 1).padStart(2, "0")}`;
     },
-    [buildCodeBase, escapeRegExp, items, normalizeCategory],
+    [
+      buildCodeBase,
+      escapeRegExp,
+      items,
+      normalizeCategory,
+      suggestFromCategoryPattern,
+    ],
   );
 
   const paged = useMemo(() => {
@@ -408,7 +601,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     setShowForm(true);
   }
 
-  function openEditForm(item: InventoryItemWithKind) {
+  function openEditForm(item: InventoryListItem) {
     if (readOnly) return;
     const unit = normalizeItemUnit(item.unit);
     setEditing(item);
@@ -461,23 +654,72 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       const targetUrl = editing
         ? `${ITEMS_URL}/${encodeURIComponent(editing.code)}`
         : ITEMS_URL;
-      await httpJson(targetUrl, {
+      const savedItem = await httpJson<RemoteItem>(targetUrl, {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      await fetchItems();
+
+      setItems((prev) => {
+        const targetCode = editing?.code ?? payload.code;
+        const existingIndex = prev.findIndex((it) => it.code === targetCode);
+        const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
+        const merged: InventoryListItem = {
+          ...existing,
+          code: savedItem.code ?? payload.code,
+          name: savedItem.name ?? payload.name,
+          category: savedItem.category ?? payload.category,
+          subCategory:
+            normalizeSubCategory(savedItem.subCategory) ??
+            existing?.subCategory,
+          stock:
+            typeof savedItem.stock === "number"
+              ? savedItem.stock
+              : payload.stock,
+          kind:
+            (savedItem.kind as InventoryItemWithKind["kind"] | undefined) ??
+            existing?.kind ??
+            payload.kind,
+          createdAt: savedItem.createdAt ?? existing?.createdAt,
+          updatedAt: savedItem.updatedAt ?? new Date().toISOString(),
+        };
+
+        if (existingIndex === -1) {
+          return [merged, ...prev];
+        }
+
+        const next = [...prev];
+        next[existingIndex] = merged;
+        return next;
+      });
+
+      if (editing) {
+        setRecentlyEditedCode(savedItem.code ?? editing.code);
+        pushToast(
+          "default",
+          "Barang diperbarui",
+          `${payload.name} berhasil disimpan.`,
+        );
+      } else {
+        pushToast(
+          "default",
+          "Barang ditambahkan",
+          `${payload.name} masuk ke daftar barang.`,
+        );
+      }
+
       setShowForm(false);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal menyimpan data.";
       setFormError(message);
+      pushToast("destructive", "Gagal menyimpan", message);
     } finally {
       setSaving(false);
     }
   }
 
-  async function deleteItem(code: string) {
+  async function deleteItem(code: string, name?: string) {
     if (readOnly) return;
     setDeleting(true);
     setError(null);
@@ -485,11 +727,17 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       await httpJson(`${ITEMS_URL}/${encodeURIComponent(code)}`, {
         method: "DELETE",
       });
-      await fetchItems();
+      setItems((prev) => prev.filter((it) => it.code !== code));
+      pushToast(
+        "default",
+        "Barang dihapus",
+        `${name ?? code} dihapus dari daftar barang.`,
+      );
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal menghapus data.";
       setError(message);
+      pushToast("destructive", "Gagal menghapus", message);
     } finally {
       setDeleting(false);
     }
@@ -497,7 +745,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   async function confirmDelete() {
     if (!pendingDelete) return;
-    await deleteItem(pendingDelete.code);
+    await deleteItem(pendingDelete.code, pendingDelete.name);
     setPendingDelete(null);
   }
 
@@ -510,6 +758,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       "Stok",
       "Satuan",
       "Status",
+      "Status",
+      "Update terakhir",
     ];
     const rows = filtered.map((item) => [
       item.code,
@@ -518,6 +768,9 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
       baseQtyToDisplayNumber(item.stock, normalizeItemUnit(item.unit)),
       unitLabel(normalizeItemUnit(item.unit)),
       getStatus(item.stock, item.unit),
+      item.stock,
+      getStatus(item.stock),
+      formatDateCell(item.updatedAt ?? item.createdAt),
     ]);
     const data = [header, ...rows];
     const worksheet = XLSX.utils.aoa_to_sheet(data);
@@ -525,6 +778,29 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
     XLSX.writeFile(workbook, "inventory-export.xlsx", { bookType: "xlsx" });
+  };
+
+  const toInputDate = (date: Date) => {
+    const adjusted = new Date(
+      date.getTime() - date.getTimezoneOffset() * 60000,
+    );
+    return adjusted.toISOString().slice(0, 10);
+  };
+
+  const applyQuickDateRange = (days: number) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    setFromDate(toInputDate(start));
+    setToDate(toInputDate(end));
+    setPage(1);
+  };
+
+  const applyTodayRange = () => {
+    const today = toInputDate(new Date());
+    setFromDate(today);
+    setToDate(today);
+    setPage(1);
   };
 
   function onCloseForm() {
@@ -535,6 +811,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
 
   return (
     <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
+      <ToastRegion toasts={toasts} />
       <div className="space-y-6">
         <header className="space-y-2">
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">
@@ -567,8 +844,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
             </div>
           </div>
           <p className="text-sm text-slate-600">
-            Filter berdasarkan nama/kode atau kategori. Stok disinkronkan dari
-            server.
+            Cari barang berdasarkan nama, kode, kategori, atau tanggal.
           </p>
           {error ? (
             <p className="text-sm text-red-600">Gagal memuat data: {error}</p>
@@ -635,7 +911,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-[2fr_1.1fr_auto]">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1.2fr_auto_auto]">
           <div className="sm:col-span-1 flex gap-2 min-w-0">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -699,6 +975,8 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
               className="h-11 border-slate-200 bg-white px-4 text-slate-700 shadow-sm hover:bg-slate-50"
               onClick={() => {
                 setSearch("");
+                setFromDate("");
+                setToDate("");
                 setSelectedCategories([]);
                 setStatusFilter("all");
                 setRingSubCategory("all");
@@ -711,6 +989,50 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
               Reset
             </Button>
           </div>
+          <Input
+            type="date"
+            className="h-11 rounded-lg border-slate-200 bg-white shadow-sm"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            aria-label="Tanggal mulai"
+          />
+          <Input
+            type="date"
+            className="h-11 rounded-lg border-slate-200 bg-white shadow-sm"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            aria-label="Tanggal selesai"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Preset tanggal
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            onClick={applyTodayRange}
+          >
+            Hari ini
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            onClick={() => applyQuickDateRange(7)}
+          >
+            7 hari
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            onClick={() => applyQuickDateRange(30)}
+          >
+            30 hari
+          </Button>
         </div>
 
         {selectedCategories.includes("Ring") ? (
@@ -902,6 +1224,7 @@ export function InventoryPage({ readOnly = false }: { readOnly?: boolean }) {
                         item={item}
                         displayCode={displayCode}
                         rowNumber={rowNumber}
+                        isRecentlyEdited={recentlyEditedCode === item.code}
                         onEdit={() => openEditForm(item)}
                         onDelete={() => {
                           if (readOnly) return;
@@ -1143,6 +1466,7 @@ function Row({
   item,
   displayCode,
   rowNumber,
+  isRecentlyEdited,
   onEdit,
   onDelete,
   readOnly,
@@ -1150,18 +1474,35 @@ function Row({
   item: InventoryItemWithKind;
   displayCode: string;
   rowNumber: number;
+  isRecentlyEdited: boolean;
   onEdit: () => void;
   onDelete: () => void;
   readOnly?: boolean;
 }) {
   const status = getStatus(item.stock, item.unit);
   return (
-    <TableRow className="text-sm">
+    <TableRow
+      className={`text-sm transition-colors duration-700 ${
+        isRecentlyEdited ? "bg-sky-50/70" : ""
+      }`}
+    >
       <TableCell className="text-slate-500">{rowNumber}</TableCell>
       <TableCell className="font-semibold text-slate-800">
         {displayCode}
       </TableCell>
-      <TableCell className="text-slate-700">{item.name}</TableCell>
+      <TableCell className="text-slate-700">
+        <div className="flex flex-col gap-1">
+          <span>{item.name}</span>
+          {isRecentlyEdited ? (
+            <Badge
+              variant="outline"
+              className="w-fit border-sky-200 bg-sky-100 text-[10px] font-semibold uppercase tracking-wide text-sky-700"
+            >
+              Baru diperbarui
+            </Badge>
+          ) : null}
+        </div>
+      </TableCell>
       <TableCell>
         <StatusBadge status={status} />
       </TableCell>
@@ -1174,6 +1515,29 @@ function Row({
         </TableCell>
       )}
     </TableRow>
+  );
+}
+
+function ToastRegion({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div className="pointer-events-none fixed right-4 top-4 z-60 flex flex-col gap-2 sm:right-6 sm:top-6">
+      {toasts.map((toast) => (
+        <Alert
+          key={toast.id}
+          variant={toast.variant === "destructive" ? "destructive" : "default"}
+          className={`pointer-events-auto shadow-lg ${
+            toast.variant === "destructive"
+              ? "border-red-200 bg-red-50 text-red-900"
+              : "border-emerald-200 bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          <AlertTitle>{toast.title}</AlertTitle>
+          {toast.message ? (
+            <AlertDescription>{toast.message}</AlertDescription>
+          ) : null}
+        </Alert>
+      ))}
+    </div>
   );
 }
 
@@ -1270,6 +1634,13 @@ function getStatus(
 
 function buildDisplayCode(item: InventoryItemWithKind) {
   return item.code;
+}
+
+function formatDateCell(value?: string): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("id-ID");
 }
 
 function getRingSize(item: InventoryItemWithKind): string | null {

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Eye, EyeOff } from "lucide-react";
 import type { User } from "../../lib/auth";
 
 type LoginCardProps = {
@@ -27,6 +29,8 @@ export function LoginCard({
   onSubmit,
   onForgotPassword,
 }: LoginCardProps) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_16px_50px_-30px_rgba(37,99,235,0.35)]">
       <form
@@ -50,15 +54,32 @@ export function LoginCard({
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">Kata sandi</Label>
-          <Input
-            id="password"
-            name="password"
-            type="password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => onPasswordChange(e.target.value)}
-            className="h-11 rounded-lg border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm focus-visible:border-sky-500 focus-visible:ring-sky-200"
-          />
+          <div className="relative">
+            <Input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              className="h-11 rounded-lg border-slate-200 bg-white pl-4 pr-11 text-sm text-slate-900 shadow-sm focus-visible:border-sky-500 focus-visible:ring-sky-200"
+            />
+            <button
+              type="button"
+              className="absolute inset-y-0 right-0 inline-flex w-10 items-center justify-center text-slate-500 hover:text-slate-700"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={
+                showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"
+              }
+              aria-pressed={showPassword}
+            >
+              {showPassword ? (
+                <EyeOff className="size-4" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+            </button>
+          </div>
         </div>
         <div className="flex items-center justify-between text-sm text-slate-600">
           <label className="flex items-center gap-2 font-medium text-slate-700">

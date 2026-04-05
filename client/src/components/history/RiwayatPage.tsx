@@ -51,76 +51,40 @@ type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
   .replace(/\/$/, "");
-const INBOUND_URL = `${API_BASE}/api/inbound`;
-const OUTBOUND_URL = `${API_BASE}/api/outbound`;
-const RAW_OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
-const PRODUCTION_URL = `${API_BASE}/api/production`;
-const ITEMS_URL = `${API_BASE}/api/items`;
-const RAW_ITEMS_URL = `${API_BASE}/api/raw-materials`;
+const HISTORY_URL = `${API_BASE}/api/history`;
 
 type UserRef = { id: string; name?: string | null; email?: string | null };
-type LineApi = { code: string; qty: number; note?: string; name?: string };
-type InboundApi = {
-  id: string;
-  code?: string;
-  vendor?: string;
-  date: string;
-  note?: string;
-  lines: LineApi[];
-  createdAt?: string;
-  createdBy?: UserRef | null;
-};
-type OutboundApi = {
-  id: string;
-  code?: string;
-  orderer?: string;
-  date: string;
-  note?: string;
-  lines: LineApi[];
-  createdAt?: string;
-  createdBy?: UserRef | null;
-};
-
-type RawOutboundLineApi = {
-  materialCode?: string;
-  materialName?: string;
-  batchCode?: string;
-  qty: number;
-  note?: string;
-  status?: "OUT" | "RECEIVED";
-};
-
-type RawOutboundApi = {
-  id: string;
-  code: string;
-  artisan: string;
-  date: string;
-  note?: string | null;
-  status: "OUT" | "RECEIVED";
-  lines: RawOutboundLineApi[];
-  createdAt?: string;
-  createdBy?: UserRef | null;
-};
-
-type ProductionLineApi = {
+type HistoryLine = {
   code: string;
   name?: string;
-  category?: string;
-  subCategory?: string;
-  kind?: string;
+  direction: "Masuk" | "Keluar";
+  kind: "Barang" | "Bahan";
+  category: "Barang" | "Konveksi" | "Bahan baku" | "Produksi";
   qty: number;
   note?: string;
-  sourceType?: "ITEM" | "BAHAN_BAKU";
+  batchCode?: string;
 };
 
-type ProductionApi = {
-  id: string;
-  code: string;
-  date: string;
-  note?: string | null;
-  rawLines: ProductionLineApi[];
-  finishedLines: ProductionLineApi[];
-  createdAt?: string;
+type HistoryDetail = {
+  txCode: string;
+  direction: "Masuk" | "Keluar";
+  kind: "Barang" | "Bahan";
+  category: "Barang" | "Konveksi" | "Bahan baku" | "Produksi";
+  actor?: string;
+  dateRaw: string;
+  note?: string;
+  lines: HistoryLine[];
+};
+
+type HistoryStats = {
+  total: number;
+  inboundCount: number;
+  outboundCount: number;
+  outboundGoodsCount: number;
+  outboundRawCount: number;
+  inboundQty: number;
+  outboundQty: number;
+  outboundRawQty: number;
 };
 
 type DraftApi = {
@@ -136,18 +100,27 @@ type Movement = {
   id: string;
   direction: "Masuk" | "Keluar";
   kind: "Barang" | "Bahan";
-  category: "Barang" | "Bahan baku" | "Produksi";
+  category: "Barang" | "Konveksi" | "Bahan baku" | "Produksi";
   txCode: string;
   recordId: string;
   itemCode: string;
   name: string;
   qty: number;
   actor?: string;
-  time: string;
   rawTime: string;
   timestamp: number;
   note?: string;
   batchCode?: string;
+  detail: HistoryDetail;
+};
+
+type HistoryResponse = {
+  data: Movement[];
+  total: number;
+  page: number;
+  perPage: number;
+  pageCount: number;
+  stats: HistoryStats;
 };
 
 function formatDateTime(value: string) {
@@ -181,18 +154,31 @@ export function RiwayatPage() {
   const [outbound, setOutbound] = useState<OutboundApi[]>([]);
   const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
   const [production, setProduction] = useState<ProductionApi[]>([]);
+  const [movements, setMovements] = useState<Movement[]>([]);
+  const [stats, setStats] = useState<HistoryStats>({
+    total: 0,
+    inboundCount: 0,
+    outboundCount: 0,
+    outboundGoodsCount: 0,
+    outboundRawCount: 0,
+    inboundQty: 0,
+    outboundQty: 0,
+    outboundRawQty: 0,
+  });
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<"all" | "Masuk" | "Keluar">(
     "all",
   );
   const [categoryFilter, setCategoryFilter] = useState<
-    "all" | "Barang" | "Bahan baku" | "Produksi"
+    "all" | "Barang" | "Konveksi" | "Bahan baku" | "Produksi"
   >("all");
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState<{
     txCode: string;
@@ -254,18 +240,41 @@ export function RiwayatPage() {
     setLoading(true);
     setError(null);
     try {
-      const limit = 1000;
-      const [inboundData, outboundData, rawOutboundData, productionData] =
-        await Promise.all([
-          httpJson<InboundApi[]>(`${INBOUND_URL}?limit=${limit}`),
-          httpJson<OutboundApi[]>(`${OUTBOUND_URL}?limit=${limit}`),
-          httpJson<RawOutboundApi[]>(`${RAW_OUTBOUND_URL}?limit=${limit}`),
-          httpJson<ProductionApi[]>(`${PRODUCTION_URL}?limit=${limit}`),
-        ]);
-      setInbound(inboundData);
-      setOutbound(outboundData);
-      setRawOutbound(rawOutboundData);
-      setProduction(productionData);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("perPage", String(perPage));
+
+      if (typeFilter !== "all") {
+        params.set("type", typeFilter);
+      }
+
+      if (categoryFilter !== "all") {
+        params.set("category", categoryFilter);
+      }
+
+      if (search.trim()) {
+        params.set("search", search.trim());
+      }
+
+      if (fromDate) {
+        params.set("fromDate", fromDate);
+      }
+
+      if (toDate) {
+        params.set("toDate", toDate);
+      }
+
+      const response = await httpJson<HistoryResponse>(
+        `${HISTORY_URL}?${params.toString()}`,
+      );
+
+      setMovements(response.data);
+      setStats(response.stats);
+      setTotal(response.total);
+      setPageCount(response.pageCount);
+      if (response.page !== page) {
+        setPage(response.page);
+      }
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal memuat riwayat.";
@@ -273,7 +282,7 @@ export function RiwayatPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [categoryFilter, fromDate, page, perPage, search, toDate, typeFilter]);
 
   useEffect(() => {
     loadHistory();
@@ -419,7 +428,7 @@ export function RiwayatPage() {
   }, [movements, unitByCode]);
 
   // Draft API belum tersedia di halaman ini; kosongkan agar kompilasi tetap aman
-  const drafts: DraftApi[] = [];
+  const drafts = useMemo<DraftApi[]>(() => [], []);
 
   const draftActivities = useMemo(() => {
     return drafts
@@ -436,33 +445,13 @@ export function RiwayatPage() {
       .sort((a, b) => b.timestamp - a.timestamp);
   }, [drafts]);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const fromTs = fromDate ? Date.parse(`${fromDate}T00:00:00`) : null;
-    const toTs = toDate ? Date.parse(`${toDate}T23:59:59`) : null;
-
-    return movements.filter((row) => {
-      if (typeFilter !== "all" && row.direction !== typeFilter) return false;
-      if (categoryFilter !== "all" && row.category !== categoryFilter)
-        return false;
-      if (fromTs && row.timestamp < fromTs) return false;
-      if (toTs && row.timestamp > toTs) return false;
-      if (!term) return true;
-      const haystack = `${row.txCode} ${row.itemCode} ${row.name} ${
-        row.actor ?? ""
-      } ${row.note ?? ""} ${row.batchCode ?? ""}`.toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [movements, typeFilter, categoryFilter, search, fromDate, toDate]);
-
   useEffect(() => {
     setPage(1);
   }, [typeFilter, categoryFilter, search, fromDate, toDate]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / perPage));
   const currentPage = Math.min(page, pageCount);
   const start = (currentPage - 1) * perPage;
-  const pageRows = filtered.slice(start, start + perPage);
+  const pageRows = movements;
 
   const toDateOnly = (value: string, fallback?: string) => {
     const d = new Date(value);
@@ -503,6 +492,18 @@ export function RiwayatPage() {
         row.note ?? "",
       ];
     });
+    const data: Array<Array<string | number>> = rows.map((row) => [
+      row.txCode,
+      toDateOnly(row.rawTime, formatDateTime(row.rawTime)),
+      row.itemCode,
+      row.name,
+      Math.abs(row.qty),
+      "pcs",
+      row.actor ?? "",
+      row.kind,
+      row.batchCode ?? "",
+      row.note ?? "",
+    ]);
 
     return [header, ...data];
   };
@@ -533,170 +534,89 @@ export function RiwayatPage() {
     URL.revokeObjectURL(url);
   };
 
-  const openDetail = (row: Movement) => {
-    const nameMap = new Map(
-      [...items, ...rawItems].map((it) => [it.code, it.name]),
+  const buildHistoryParams = useCallback(
+    (targetPage: number, targetPerPage: number) => {
+      const params = new URLSearchParams();
+      params.set("page", String(targetPage));
+      params.set("perPage", String(targetPerPage));
+
+      if (typeFilter !== "all") params.set("type", typeFilter);
+      if (categoryFilter !== "all") params.set("category", categoryFilter);
+      if (search.trim()) params.set("search", search.trim());
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+
+      return params;
+    },
+    [categoryFilter, fromDate, search, toDate, typeFilter],
+  );
+
+  const fetchAllMovementsForExport = useCallback(async () => {
+    const first = await httpJson<HistoryResponse>(
+      `${HISTORY_URL}?${buildHistoryParams(1, 200).toString()}`,
     );
 
-    if (row.category === "Produksi") {
-      const match =
-        production.find((rec) => rec.code === row.txCode) ??
-        production.find((rec) => rec.id === row.recordId);
-
-      const sourceDate = match?.createdAt ?? match?.date ?? row.rawTime;
-      const lines = match
-        ? [
-            ...match.finishedLines.map((line) => ({
-              code: line.code,
-              name: line.name ?? nameMap.get(line.code) ?? line.code,
-              qty: line.qty,
-              note: line.note ?? match.note ?? undefined,
-              direction: "Masuk" as const,
-              kind: "Barang" as const,
-              category: "Produksi" as const,
-            })),
-            ...match.rawLines.map((line) => ({
-              code: line.code,
-              name: line.name ?? nameMap.get(line.code) ?? line.code,
-              qty: line.qty,
-              note: line.note ?? match.note ?? undefined,
-              direction: "Keluar" as const,
-              kind: "Bahan" as const,
-              category: "Produksi" as const,
-            })),
-          ]
-        : [
-            {
-              code: row.itemCode,
-              name: row.name,
-              qty: Math.abs(row.qty),
-              note: row.note,
-              direction: row.direction,
-              kind: row.kind,
-              category: row.category,
-            },
-          ];
-
-      setDetailData({
-        txCode: match?.code ?? row.txCode,
-        direction: row.direction,
-        kind: row.kind,
-        category: row.category,
-        actor: undefined,
-        date: formatDateTime(sourceDate),
-        note: match?.note ?? row.note,
-        lines,
-      });
-      setDetailOpen(true);
-      return;
+    if (first.pageCount <= 1) {
+      return first.data;
     }
 
-    if (row.direction === "Masuk") {
-      const match =
-        inbound.find((rec) => rec.code === row.txCode) ??
-        inbound.find((rec) => rec.id === row.recordId);
-      const lines = match?.lines ?? [
-        {
-          code: row.itemCode,
-          name: row.name,
-          qty: Math.abs(row.qty),
-          note: row.note,
-        },
-      ];
-      setDetailData({
-        txCode: match?.code ?? row.txCode,
-        direction: row.direction,
-        kind: "Barang",
-        category: row.category,
-        actor: match?.vendor,
-        date: formatDateTime(match?.date ?? row.rawTime),
-        note: match?.note ?? row.note,
-        lines: lines.map((line) => ({
-          ...line,
-          direction: row.direction,
-          kind: "Barang" as const,
-          category: row.category,
-        })),
-      });
-      setDetailOpen(true);
-      return;
+    const allRows = [...first.data];
+    for (let p = 2; p <= first.pageCount; p += 1) {
+      const next = await httpJson<HistoryResponse>(
+        `${HISTORY_URL}?${buildHistoryParams(p, 200).toString()}`,
+      );
+      allRows.push(...next.data);
     }
+    return allRows;
+  }, [buildHistoryParams]);
 
-    if (row.kind === "Bahan") {
-      const match =
-        rawOutbound.find((rec) => rec.code === row.txCode) ??
-        rawOutbound.find((rec) => rec.id === row.recordId);
-      const lines = (
-        match?.lines ?? [
-          {
-            materialCode: row.itemCode,
-            materialName: row.name,
-            qty: Math.abs(row.qty),
-            note: row.note,
-            batchCode: row.batchCode,
-          },
-        ]
-      ).map((l) => ({
-        code: l.materialCode ?? row.itemCode,
-        name: l.materialName ?? row.name,
-        qty: Math.abs(l.qty),
-        note: l.note ?? row.note,
-        batchCode: l.batchCode ?? row.batchCode,
-        direction: row.direction,
-        kind: "Bahan" as const,
-        category: row.category,
-      }));
-      setDetailData({
-        txCode: match?.code ?? row.txCode,
-        direction: row.direction,
-        kind: row.kind,
-        category: row.category,
-        actor: row.actor ?? match?.artisan,
-        date: formatDateTime(match?.date ?? row.rawTime),
-        note: match?.note ?? row.note,
-        lines,
-      });
-      setDetailOpen(true);
-      return;
-    }
-
-    const match =
-      outbound.find((rec) => rec.code === row.txCode) ??
-      outbound.find((rec) => rec.id === row.recordId);
-    const lines = match?.lines ?? [
+  const openDetail = (row: Movement) => {
+    const detail = row.detail;
+    const lines = detail?.lines ?? [
       {
         code: row.itemCode,
         name: row.name,
         qty: Math.abs(row.qty),
         note: row.note,
-      },
-    ];
-    setDetailData({
-      txCode: match?.code ?? row.txCode,
-      direction: row.direction,
-      kind: row.kind,
-      category: row.category,
-      actor: row.actor ?? match?.orderer,
-      date: formatDateTime(match?.date ?? row.rawTime),
-      note: match?.note ?? row.note,
-      lines: lines.map((line) => ({
-        ...line,
+        batchCode: row.batchCode,
         direction: row.direction,
         kind: row.kind,
         category: row.category,
+      },
+    ];
+
+    setDetailData({
+      txCode: detail?.txCode ?? row.txCode,
+      direction: detail?.direction ?? row.direction,
+      kind: detail?.kind ?? row.kind,
+      category: detail?.category ?? row.category,
+      actor: detail?.actor ?? row.actor,
+      date: formatDateTime(detail?.dateRaw ?? row.rawTime),
+      note: detail?.note ?? row.note,
+      lines: lines.map((line) => ({
+        ...line,
+        qty: Math.abs(line.qty),
+        direction: line.direction,
+        kind: line.kind,
+        category: line.category,
       })),
     });
     setDetailOpen(true);
   };
 
-  const exportExcel = () => {
-    if (filtered.length === 0) return;
+  const exportExcel = async () => {
+    const rowsToExport = await fetchAllMovementsForExport();
+    if (rowsToExport.length === 0) return;
 
     const workbook = XLSX.utils.book_new();
 
     if (typeFilter === "all") {
-      const inboundRows = filtered.filter((row) => row.direction === "Masuk");
-      const outboundRows = filtered.filter((row) => row.direction === "Keluar");
+      const inboundRows = rowsToExport.filter(
+        (row) => row.direction === "Masuk",
+      );
+      const outboundRows = rowsToExport.filter(
+        (row) => row.direction === "Keluar",
+      );
 
       if (inboundRows.length > 0) {
         const data = buildHistoryRows(inboundRows);
@@ -716,7 +636,7 @@ export function RiwayatPage() {
       return;
     }
 
-    const data = buildHistoryRows(filtered);
+    const data = buildHistoryRows(rowsToExport);
     const sheet = XLSX.utils.aoa_to_sheet(data);
     applySheetStyles(sheet, data);
     XLSX.utils.book_append_sheet(workbook, sheet, typeFilter);
@@ -725,12 +645,17 @@ export function RiwayatPage() {
     XLSX.writeFile(workbook, filename, { bookType: "xlsx" });
   };
 
-  const exportCsv = () => {
-    if (filtered.length === 0) return;
+  const exportCsv = async () => {
+    const rowsToExport = await fetchAllMovementsForExport();
+    if (rowsToExport.length === 0) return;
 
     if (typeFilter === "all") {
-      const inboundRows = filtered.filter((row) => row.direction === "Masuk");
-      const outboundRows = filtered.filter((row) => row.direction === "Keluar");
+      const inboundRows = rowsToExport.filter(
+        (row) => row.direction === "Masuk",
+      );
+      const outboundRows = rowsToExport.filter(
+        (row) => row.direction === "Keluar",
+      );
       downloadCsv(inboundRows, "riwayat-masuk.csv");
       downloadCsv(outboundRows, "riwayat-keluar.csv");
       return;
@@ -738,7 +663,7 @@ export function RiwayatPage() {
 
     const filename =
       typeFilter === "Masuk" ? "riwayat-masuk.csv" : "riwayat-keluar.csv";
-    downloadCsv(filtered, filename);
+    downloadCsv(rowsToExport, filename);
   };
 
   return (
@@ -746,23 +671,23 @@ export function RiwayatPage() {
       <div className="flex flex-wrap items-start gap-3 justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
-            Audit trail pergerakan stok
+            Catatan pergerakan stok
           </p>
           <h1 className="text-2xl font-semibold leading-tight">Riwayat</h1>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={loadHistory} disabled={loading}>
             <RefreshCw className="mr-2 size-4" />
-            {loading ? "Memuat..." : "Refresh"}
+            {loading ? "Memuat..." : "Muat ulang"}
           </Button>
-          <Button onClick={exportExcel} disabled={filtered.length === 0}>
+          <Button onClick={exportExcel} disabled={total === 0 || loading}>
             <Download className="mr-2 size-4" />
             Export Excel
           </Button>
           <Button
             variant="secondary"
             onClick={exportCsv}
-            disabled={filtered.length === 0}
+            disabled={total === 0 || loading}
           >
             <Download className="mr-2 size-4" />
             Export CSV
@@ -832,9 +757,7 @@ export function RiwayatPage() {
           <p className="text-lg font-semibold">
             {typeFilter === "all" ? "Semua jenis" : typeFilter}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {filtered.length} hasil
-          </p>
+          <p className="text-xs text-muted-foreground">{total} hasil</p>
         </div>
       </div>
 
@@ -867,6 +790,7 @@ export function RiwayatPage() {
           >
             <option value="all">Semua kategori</option>
             <option value="Barang">Barang</option>
+            <option value="Konveksi">Konveksi</option>
             <option value="Bahan baku">Bahan baku</option>
             <option value="Produksi">Produksi</option>
           </select>
@@ -956,7 +880,7 @@ export function RiwayatPage() {
                         {start + idx + 1}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {row.time}
+                        {formatDateTime(row.rawTime)}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-slate-700">
                         {row.txCode}
@@ -985,9 +909,11 @@ export function RiwayatPage() {
                             "rounded-full px-3",
                             row.category === "Barang"
                               ? "bg-slate-100 text-slate-700"
-                              : row.category === "Bahan baku"
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-blue-50 text-blue-700",
+                              : row.category === "Konveksi"
+                                ? "bg-teal-50 text-teal-700"
+                                : row.category === "Bahan baku"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-blue-50 text-blue-700",
                           )}
                         >
                           {row.category}
@@ -1052,9 +978,7 @@ export function RiwayatPage() {
       <div className="rounded-2xl border bg-white shadow-sm">
         <div className="flex items-center justify-between p-4">
           <div>
-            <p className="text-sm text-muted-foreground">
-              Riwayat perubahan draft
-            </p>
+            <p className="text-sm text-muted-foreground">Riwayat draft</p>
             <h2 className="text-lg font-semibold">Draft</h2>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -1064,7 +988,7 @@ export function RiwayatPage() {
         <Separator />
         {draftActivities.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            Belum ada aktivitas draft.
+            Belum ada riwayat draft.
           </div>
         ) : (
           <div className="max-h-64 overflow-y-auto divide-y">
@@ -1122,9 +1046,11 @@ export function RiwayatPage() {
                     "rounded-full px-2 py-1 text-xs",
                     detailData.category === "Produksi"
                       ? "bg-blue-50 text-blue-700"
-                      : detailData.category === "Bahan baku"
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-slate-100 text-slate-700",
+                      : detailData.category === "Konveksi"
+                        ? "bg-teal-50 text-teal-700"
+                        : detailData.category === "Bahan baku"
+                          ? "bg-amber-50 text-amber-700"
+                          : "bg-slate-100 text-slate-700",
                   )}
                 >
                   {detailData.category}
@@ -1144,9 +1070,12 @@ export function RiwayatPage() {
                     ? "Pencatat"
                     : detailData.kind === "Bahan"
                       ? "Pengrajin"
-                      : detailData.direction === "Masuk"
-                        ? "Vendor"
-                        : "Pemesan"}
+                      : detailData.category === "Konveksi" &&
+                          detailData.direction === "Keluar"
+                        ? "Penerima"
+                        : detailData.direction === "Masuk"
+                          ? "Vendor"
+                          : "Pemesan"}
                 </p>
                 <p className="font-medium">{detailData.actor ?? "-"}</p>
               </div>
@@ -1199,9 +1128,11 @@ export function RiwayatPage() {
                               "rounded-full px-2 py-0.5",
                               lineCategory === "Produksi"
                                 ? "bg-blue-50 text-blue-700"
-                                : lineCategory === "Bahan baku"
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-slate-100 text-slate-700",
+                                : lineCategory === "Konveksi"
+                                  ? "bg-teal-50 text-teal-700"
+                                  : lineCategory === "Bahan baku"
+                                    ? "bg-amber-50 text-amber-700"
+                                    : "bg-slate-100 text-slate-700",
                             )}
                           >
                             {lineCategory}

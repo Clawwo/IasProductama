@@ -27,6 +27,38 @@ export class DraftsController {
   constructor(private readonly draftsService: DraftsService) {}
 
   @Roles(Role.ADMIN, Role.PETUGAS, Role.PELIHAT)
+  @Get('paged')
+  findPaged(
+    @Query('type') type?: DraftType,
+    @Query('draftKind')
+    draftKind?: 'CONVECTION_INBOUND' | 'CONVECTION_OUTBOUND',
+    @Query('page') page?: string,
+    @Query('perPage') perPage?: string,
+  ) {
+    if (type && !Object.values(DraftType).includes(type)) {
+      throw new BadRequestException('Tipe draft tidak valid');
+    }
+
+    if (
+      draftKind &&
+      draftKind !== 'CONVECTION_INBOUND' &&
+      draftKind !== 'CONVECTION_OUTBOUND'
+    ) {
+      throw new BadRequestException('Draft kind tidak valid');
+    }
+
+    const pageParsed = Number(page);
+    const perPageParsed = Number(perPage);
+
+    return this.draftsService.findPaged({
+      type,
+      draftKind,
+      page: Number.isFinite(pageParsed) ? pageParsed : undefined,
+      perPage: Number.isFinite(perPageParsed) ? perPageParsed : undefined,
+    });
+  }
+
+  @Roles(Role.ADMIN, Role.PETUGAS, Role.PELIHAT)
   @Get()
   findAll(@Query('type') type?: DraftType) {
     if (type && !Object.values(DraftType).includes(type)) {

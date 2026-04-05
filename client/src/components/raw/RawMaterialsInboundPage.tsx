@@ -24,25 +24,19 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2,
-  PackageOpen,
+  PackagePlus,
   Plus,
   RefreshCw,
   Search,
   Trash2,
 } from "lucide-react";
-import {
-  formatBaseQtyWithUnit,
-  normalizeItemUnit,
-  parseInputToBaseQty,
-  unitLabel,
-} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
   .trim()
   .replace(/\/$/, "");
 const RAW_URL = `${API_BASE}/api/raw-materials`;
-const OUTBOUND_URL = `${API_BASE}/api/raw-materials/outbound`;
+const INBOUND_URL = `${API_BASE}/api/raw-materials/inbound`;
 const DRAFTS_URL = `${API_BASE}/api/drafts`;
 
 type RawMaterial = {
@@ -51,34 +45,27 @@ type RawMaterial = {
   category?: string;
   subCategory?: string;
   kind?: string;
-  unit?: string;
   stock: number;
 };
 
-type OutboundLine = {
+type InboundLine = {
   id: string;
   materialCode: string;
   materialName?: string;
   category?: string;
   subCategory?: string;
   kind?: string;
-  batchCode: string;
   qty: number;
   note?: string;
-  status: "OUT" | "RECEIVED";
-  receivedAt?: string | null;
-  receivedBy?: string | null;
 };
 
-type OutboundRecord = {
+type InboundRecord = {
   id: string;
   code: string;
-  artisan: string;
+  vendor: string;
   date: string;
   note?: string | null;
-  status: "OUT" | "RECEIVED";
-  receivedAt?: string | null;
-  lines: OutboundLine[];
+  lines: InboundLine[];
 };
 
 type LineForm = {
@@ -88,7 +75,6 @@ type LineForm = {
   category?: string;
   subCategory?: string;
   kind?: string;
-  batchCode: string;
   qty: number;
   note?: string;
 };
@@ -97,8 +83,8 @@ type LineFormState = Omit<LineForm, "qty"> & { qty: string };
 
 type ToastVariant = "default" | "destructive";
 
-export function RawMaterialsOutboundTrackingPage() {
-  const [artisan, setArtisan] = useState("");
+export function RawMaterialsInboundPage() {
+  const [vendor, setVendor] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [lineForm, setLineForm] = useState<LineFormState>({
@@ -108,20 +94,18 @@ export function RawMaterialsOutboundTrackingPage() {
     category: "",
     subCategory: "",
     kind: "",
-    batchCode: "",
     qty: "1",
     note: "",
   });
   const [lines, setLines] = useState<LineForm[]>([]);
   const [rawItems, setRawItems] = useState<RawMaterial[]>([]);
-  const [outbounds, setOutbounds] = useState<OutboundRecord[]>([]);
+  const [inbounds, setInbounds] = useState<InboundRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftStatus, setDraftStatus] = useState("Belum disimpan");
   const [draftId, setDraftId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [receiverName, setReceiverName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -138,7 +122,6 @@ export function RawMaterialsOutboundTrackingPage() {
       category: "",
       subCategory: "",
       kind: "",
-      batchCode: "",
       qty: "1",
       note: "",
     });
@@ -158,13 +141,13 @@ export function RawMaterialsOutboundTrackingPage() {
     }
   }, []);
 
-  const loadOutbounds = useCallback(async () => {
+  const loadInbounds = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await httpJson<OutboundRecord[]>(`${OUTBOUND_URL}?limit=50`);
-      setOutbounds(data);
+      const data = await httpJson<InboundRecord[]>(`${INBOUND_URL}?limit=50`);
+      setInbounds(data);
     } catch (err: unknown) {
-      showNotice("destructive", toUserMessage(err, "Gagal memuat tracking"));
+      showNotice("destructive", toUserMessage(err, "Gagal memuat data masuk"));
     } finally {
       setLoading(false);
     }
@@ -172,8 +155,8 @@ export function RawMaterialsOutboundTrackingPage() {
 
   useEffect(() => {
     loadRawItems();
-    loadOutbounds();
-  }, [loadOutbounds, loadRawItems]);
+    loadInbounds();
+  }, [loadInbounds, loadRawItems]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("draft:pending-load");
@@ -184,16 +167,15 @@ export function RawMaterialsOutboundTrackingPage() {
         type?: string;
         payload?: Record<string, unknown>;
       };
-      if (parsed.type !== "OUTBOUND" || !parsed.payload) return;
+      if (parsed.type !== "INBOUND" || !parsed.payload) return;
       const payload = parsed.payload as {
         draftKind?: unknown;
-        artisan?: unknown;
+        vendor?: unknown;
         date?: unknown;
         note?: unknown;
         lines?: Array<{
           code?: unknown;
           name?: unknown;
-          batchCode?: unknown;
           qty?: unknown;
           note?: unknown;
           category?: unknown;
@@ -201,11 +183,12 @@ export function RawMaterialsOutboundTrackingPage() {
           kind?: unknown;
         }>;
       };
+
       const draftKind =
         typeof payload.draftKind === "string" ? payload.draftKind : undefined;
-      if (draftKind !== "OUTBOUND_RAW") return;
+      if (draftKind !== "INBOUND_RAW") return;
 
-      setArtisan(typeof payload.artisan === "string" ? payload.artisan : "");
+      setVendor(typeof payload.vendor === "string" ? payload.vendor : "");
       setDate(
         typeof payload.date === "string" && payload.date
           ? payload.date.slice(0, 10)
@@ -218,9 +201,7 @@ export function RawMaterialsOutboundTrackingPage() {
             id: crypto.randomUUID(),
             code: typeof line.code === "string" ? line.code : "",
             name: typeof line.name === "string" ? line.name : "",
-            batchCode: typeof line.batchCode === "string" ? line.batchCode : "",
-            qty:
-              typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
+            qty: typeof line.qty === "number" ? line.qty : Number(line.qty) || 0,
             note: typeof line.note === "string" ? line.note : undefined,
             category:
               typeof line.category === "string" ? line.category : undefined,
@@ -238,7 +219,7 @@ export function RawMaterialsOutboundTrackingPage() {
 
       setDraftStatus("Draft dimuat");
       setDraftId(typeof parsed.id === "string" ? parsed.id : null);
-      showNotice("default", "Draft bahan baku keluar dimuat.");
+      showNotice("default", "Draft bahan baku masuk dimuat.");
     } catch {
       showNotice("destructive", "Draft tidak bisa dibaca.");
     } finally {
@@ -252,11 +233,6 @@ export function RawMaterialsOutboundTrackingPage() {
     return map;
   }, [rawItems]);
 
-  const selectedUnit = useMemo(() => {
-    const code = lineForm.code.trim();
-    return normalizeItemUnit(rawLookup.get(code)?.unit);
-  }, [lineForm.code, rawLookup]);
-
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return rawItems;
@@ -264,11 +240,6 @@ export function RawMaterialsOutboundTrackingPage() {
       `${item.code} ${item.name ?? ""}`.toLowerCase().includes(term),
     );
   }, [rawItems, searchTerm]);
-
-  const pendingOutbounds = useMemo(
-    () => outbounds.filter((rec) => rec.lines.some((l) => l.status === "OUT")),
-    [outbounds],
-  );
 
   useEffect(() => {
     setHighlightIndex(0);
@@ -289,19 +260,10 @@ export function RawMaterialsOutboundTrackingPage() {
 
   const validateLine = (line: LineFormState | LineForm) => {
     const code = line.code.trim();
-    const batch = line.batchCode.trim();
+    const qty = Number(line.qty);
     if (!code) return "Pilih kode bahan baku.";
     if (!rawLookup.has(code)) return "Kode tidak dikenal. Pilih dari daftar.";
-    if (!batch) return "Batch wajib diisi.";
-
-    const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
-    if (typeof line.qty === "string") {
-      const parsed = parseInputToBaseQty(line.qty, unit);
-      if (!parsed.ok) return parsed.message;
-    } else {
-      const qty = Number(line.qty);
-      if (!Number.isFinite(qty) || qty <= 0) return "Qty harus lebih dari 0.";
-    }
+    if (!Number.isFinite(qty) || qty <= 0) return "Qty minimal 1.";
     return null;
   };
 
@@ -312,20 +274,11 @@ export function RawMaterialsOutboundTrackingPage() {
       return;
     }
     const code = lineForm.code.trim();
-    const batch = lineForm.batchCode.trim();
-    const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
-    const parsed = parseInputToBaseQty(lineForm.qty, unit);
-    if (!parsed.ok) {
-      setFormError(parsed.message);
-      return;
-    }
-    const qty = parsed.baseQty;
+    const qty = Number(lineForm.qty);
     const matched = rawLookup.get(code);
     setFormError(null);
     setLines((prev) => {
-      const existingIndex = prev.findIndex(
-        (line) => line.code === code && line.batchCode.trim() === batch,
-      );
+      const existingIndex = prev.findIndex((line) => line.code === code);
       if (existingIndex >= 0) {
         const next = [...prev];
         next[existingIndex] = {
@@ -342,7 +295,6 @@ export function RawMaterialsOutboundTrackingPage() {
         {
           ...lineForm,
           code,
-          batchCode: batch,
           qty,
           name: matched?.name ?? lineForm.name,
           category: matched?.category ?? lineForm.category,
@@ -361,8 +313,8 @@ export function RawMaterialsOutboundTrackingPage() {
 
   const handleSaveDraft = async () => {
     const payload = {
-      draftKind: "OUTBOUND_RAW",
-      artisan: artisan.trim(),
+      draftKind: "INBOUND_RAW",
+      vendor: vendor.trim(),
       date,
       note: note.trim() || undefined,
       lines: lines.map((line) => ({
@@ -371,7 +323,6 @@ export function RawMaterialsOutboundTrackingPage() {
         category: line.category || undefined,
         subCategory: line.subCategory || undefined,
         kind: line.kind || undefined,
-        batchCode: line.batchCode,
         qty: line.qty,
         note: line.note || undefined,
       })),
@@ -385,11 +336,11 @@ export function RawMaterialsOutboundTrackingPage() {
       const data = await httpJson<{ id?: string }>(targetUrl, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "OUTBOUND", payload }),
+        body: JSON.stringify({ type: "INBOUND", payload }),
       });
       if (data?.id) setDraftId(data.id);
       setDraftStatus("Draft tersimpan");
-      showNotice("default", "Draft bahan baku keluar disimpan.");
+      showNotice("default", "Draft bahan baku masuk disimpan.");
     } catch (err: unknown) {
       showNotice("destructive", toUserMessage(err, "Gagal menyimpan draft."));
     } finally {
@@ -397,14 +348,14 @@ export function RawMaterialsOutboundTrackingPage() {
     }
   };
 
-  const submitOutbound = async () => {
-    if (!artisan.trim()) {
-      setFormError("Nama pengrajin wajib diisi.");
+  const submitInbound = async () => {
+    if (!vendor.trim()) {
+      setFormError("Nama supplier wajib diisi.");
       return;
     }
     const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (!isoDatePattern.test(date)) {
-      setFormError("Tanggal keluar tidak valid.");
+      setFormError("Tanggal masuk tidak valid.");
       return;
     }
     if (lines.length === 0) {
@@ -418,11 +369,12 @@ export function RawMaterialsOutboundTrackingPage() {
         return;
       }
     }
+
     setFormError(null);
     setSaving(true);
     try {
       const payload = {
-        artisan: artisan.trim(),
+        vendor: vendor.trim(),
         date,
         note: note.trim() || undefined,
         lines: lines.map((line) => ({
@@ -431,27 +383,29 @@ export function RawMaterialsOutboundTrackingPage() {
           category: line.category || undefined,
           subCategory: line.subCategory || undefined,
           kind: line.kind || undefined,
-          batchCode: line.batchCode,
           qty: line.qty,
           note: line.note || undefined,
         })),
       };
+
       const token = getAccessToken();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
       if (token) headers.Authorization = `Bearer ${token}`;
-      await httpJson(OUTBOUND_URL, {
+
+      await httpJson(INBOUND_URL, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
       });
-      showNotice("default", "Bahan baku keluar berhasil disimpan.");
+
+      showNotice("default", "Bahan baku masuk berhasil disimpan.");
       setLines([]);
       setNote("");
-      setArtisan("");
+      setVendor("");
       resetLineForm();
-      await loadOutbounds();
+      await loadInbounds();
       await loadRawItems();
     } catch (err: unknown) {
       showNotice("destructive", toUserMessage(err, "Gagal menyimpan."));
@@ -460,37 +414,25 @@ export function RawMaterialsOutboundTrackingPage() {
     }
   };
 
-  const handleReceive = async (lineId: string) => {
-    if (!receiverName.trim()) {
-      showNotice("destructive", "Isi nama admin penerima dulu.");
-      return;
-    }
-    try {
-      const token = getAccessToken();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      await httpJson(`${OUTBOUND_URL}/lines/${lineId}/receive`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ receivedBy: receiverName.trim() }),
-      });
-      showNotice("default", "Status diterima diperbarui.");
-      await loadOutbounds();
-    } catch (err: unknown) {
-      showNotice("destructive", toUserMessage(err, "Gagal memperbarui."));
-    }
-  };
+  const totalQty = useMemo(
+    () => lines.reduce((sum, line) => sum + (Number.isFinite(line.qty) ? line.qty : 0), 0),
+    [lines],
+  );
+
+  const inboundSummaries = useMemo(() => {
+    return inbounds.map((rec) => {
+      const qty = (rec.lines ?? []).reduce((sum, line) => sum + (line.qty ?? 0), 0);
+      return { ...rec, _totalQty: qty, _totalItems: rec.lines?.length ?? 0 };
+    });
+  }, [inbounds]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Bahan Baku Keluar</h1>
+          <h1 className="text-2xl font-semibold">Tracking Bahan Baku Masuk</h1>
           <p className="text-sm text-muted-foreground">
-            Catat bahan baku yang dikirim ke pengrajin lalu tandai saat
-            diterima.
+            Catat bahan baku masuk dari supplier dan stok otomatis bertambah.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -505,7 +447,8 @@ export function RawMaterialsOutboundTrackingPage() {
           >
             {draftSaving ? "Menyimpan..." : "Simpan draft"}
           </Button>
-          <Button variant="outline" className="gap-2" onClick={loadOutbounds}>
+          <Button variant="outline" className="gap-2" onClick={loadInbounds}
+            >
             <RefreshCw className="size-4" />
             Refresh
           </Button>
@@ -527,24 +470,25 @@ export function RawMaterialsOutboundTrackingPage() {
 
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <PackageOpen className="size-4" />
-          Form barang keluar
+          <PackagePlus className="size-4" />
+          Form Bahan Baku Masuk
         </div>
         <Separator className="my-3" />
+
         <div className="grid gap-3 md:grid-cols-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground">
-              Nama pengrajin
+              Supplier
             </label>
             <Input
-              value={artisan}
-              onChange={(e) => setArtisan(e.target.value)}
-              placeholder="Nama pengrajin"
+              value={vendor}
+              onChange={(e) => setVendor(e.target.value)}
+              placeholder="Nama supplier"
             />
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">
-              Tanggal keluar
+              Tanggal masuk
             </label>
             <Input
               type="date"
@@ -566,7 +510,7 @@ export function RawMaterialsOutboundTrackingPage() {
 
         <Separator className="my-4" />
 
-        <div className="grid gap-3 md:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-5">
           <div className="md:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">
               Kode bahan baku
@@ -593,10 +537,7 @@ export function RawMaterialsOutboundTrackingPage() {
                       if (e.key === "ArrowDown") {
                         e.preventDefault();
                         setHighlightIndex((idx) =>
-                          Math.min(
-                            idx + 1,
-                            Math.max(filteredItems.length - 1, 0),
-                          ),
+                          Math.min(idx + 1, Math.max(filteredItems.length - 1, 0)),
                         );
                         return;
                       }
@@ -623,9 +564,7 @@ export function RawMaterialsOutboundTrackingPage() {
                   {filteredItems.map((item, idx) => (
                     <DropdownMenuItem
                       key={item.code}
-                      className={
-                        highlightIndex === idx ? "bg-slate-100" : undefined
-                      }
+                      className={highlightIndex === idx ? "bg-slate-100" : undefined}
                       onSelect={() => {
                         handleLineSelect(item.code);
                         setDropdownOpen(false);
@@ -637,7 +576,7 @@ export function RawMaterialsOutboundTrackingPage() {
                             {item.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {formatBaseQtyWithUnit(item.stock ?? 0, normalizeItemUnit(item.unit))}
+                            Stok: {item.stock ?? 0}
                           </span>
                         </div>
                         <span className="text-xs text-slate-600 truncate max-w-72">
@@ -656,9 +595,7 @@ export function RawMaterialsOutboundTrackingPage() {
             </DropdownMenu>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Nama
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Nama</label>
             <Input
               value={lineForm.name}
               onChange={(e) =>
@@ -668,25 +605,10 @@ export function RawMaterialsOutboundTrackingPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Batch
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Qty</label>
             <Input
-              value={lineForm.batchCode}
-              onChange={(e) =>
-                setLineForm((prev) => ({ ...prev, batchCode: e.target.value }))
-              }
-              placeholder="Batch"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Qty
-            </label>
-            <Input
-              type="text"
-              inputMode={selectedUnit === "METER" ? "decimal" : "numeric"}
-              placeholder={`Qty (${unitLabel(selectedUnit)})`}
+              type="number"
+              min={1}
               value={lineForm.qty}
               onChange={(e) =>
                 setLineForm((prev) => ({
@@ -697,9 +619,7 @@ export function RawMaterialsOutboundTrackingPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Catatan
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Catatan</label>
             <Input
               value={lineForm.note}
               onChange={(e) =>
@@ -709,11 +629,15 @@ export function RawMaterialsOutboundTrackingPage() {
             />
           </div>
         </div>
+
         <div className="mt-3 flex items-center gap-2">
           <Button type="button" onClick={addLine} className="gap-2">
             <Plus className="size-4" />
             Tambah baris
           </Button>
+          <Badge variant="secondary" className="rounded-full">
+            Total qty: {totalQty}
+          </Badge>
           {formError ? (
             <span className="text-sm text-rose-600">{formError}</span>
           ) : null}
@@ -725,7 +649,6 @@ export function RawMaterialsOutboundTrackingPage() {
               <TableRow>
                 <TableHead>Kode</TableHead>
                 <TableHead>Nama</TableHead>
-                <TableHead>Batch</TableHead>
                 <TableHead className="text-right">Qty</TableHead>
                 <TableHead>Catatan</TableHead>
                 <TableHead></TableHead>
@@ -735,7 +658,7 @@ export function RawMaterialsOutboundTrackingPage() {
               {lines.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={5}
                     className="text-center text-sm text-muted-foreground"
                   >
                     Belum ada baris bahan baku.
@@ -746,13 +669,7 @@ export function RawMaterialsOutboundTrackingPage() {
                   <TableRow key={line.id}>
                     <TableCell>{line.code}</TableCell>
                     <TableCell>{line.name || "-"}</TableCell>
-                    <TableCell>{line.batchCode}</TableCell>
-                    <TableCell className="text-right">
-                      {formatBaseQtyWithUnit(
-                        line.qty,
-                        normalizeItemUnit(rawLookup.get(line.code)?.unit),
-                      )}
-                    </TableCell>
+                    <TableCell className="text-right">{line.qty}</TableCell>
                     <TableCell>{line.note || "-"}</TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -771,52 +688,39 @@ export function RawMaterialsOutboundTrackingPage() {
         </div>
 
         <div className="mt-4 flex items-center gap-3">
-          <Button onClick={submitOutbound} disabled={saving} className="gap-2">
+          <Button onClick={submitInbound} disabled={saving} className="gap-2">
             <CheckCircle2 className="size-4" />
-            {saving ? "Menyimpan..." : "Simpan keluar"}
+            {saving ? "Menyimpan..." : "Simpan masuk"}
           </Button>
         </div>
       </div>
 
       <div className="rounded-xl border bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Daftar pengiriman</h2>
-            <p className="text-sm text-muted-foreground">
-              Status OUT akan berubah ke RECEIVED saat barang diterima
-              pengrajin.
-            </p>
-          </div>
-          <div className="w-full md:w-72">
-            <label className="text-xs font-medium text-muted-foreground">
-              Nama admin penerima
-            </label>
-            <Input
-              value={receiverName}
-              onChange={(e) => setReceiverName(e.target.value)}
-              placeholder="Nama admin"
-            />
-          </div>
+        <div>
+          <h2 className="text-lg font-semibold">Daftar Masuk Terakhir</h2>
+          <p className="text-sm text-muted-foreground">
+            Menampilkan 50 transaksi bahan baku masuk terbaru.
+          </p>
         </div>
 
         <Separator className="my-3" />
 
         {loading ? (
           <div className="text-sm text-muted-foreground">Memuat data...</div>
-        ) : pendingOutbounds.length === 0 ? (
+        ) : inboundSummaries.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            Tidak ada pengiriman yang menunggu diterima.
+            Belum ada transaksi bahan baku masuk.
           </div>
         ) : (
           <div className="space-y-4">
-            {pendingOutbounds.map((record) => (
+            {inboundSummaries.map((record) => (
               <div key={record.id} className="rounded-lg border p-3">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <div className="font-semibold">{record.code}</div>
                     <div className="text-xs text-muted-foreground">
                       {new Date(record.date).toLocaleDateString("id-ID")} •{" "}
-                      {record.artisan}
+                      {record.vendor}
                     </div>
                     {record.note ? (
                       <div className="text-xs text-muted-foreground">
@@ -824,15 +728,8 @@ export function RawMaterialsOutboundTrackingPage() {
                       </div>
                     ) : null}
                   </div>
-                  <Badge
-                    className={cn(
-                      "w-fit",
-                      record.status === "RECEIVED"
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-amber-50 text-amber-700",
-                    )}
-                  >
-                    {record.status}
+                  <Badge className="w-fit bg-emerald-50 text-emerald-700">
+                    +{record._totalQty} ({record._totalItems} item)
                   </Badge>
                 </div>
                 <div className="mt-3 rounded-md border">
@@ -841,11 +738,8 @@ export function RawMaterialsOutboundTrackingPage() {
                       <TableRow>
                         <TableHead>Kode</TableHead>
                         <TableHead>Nama</TableHead>
-                        <TableHead>Batch</TableHead>
                         <TableHead className="text-right">Qty</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Admin</TableHead>
-                        <TableHead className="text-right">Aksi</TableHead>
+                        <TableHead>Catatan</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -853,42 +747,8 @@ export function RawMaterialsOutboundTrackingPage() {
                         <TableRow key={line.id}>
                           <TableCell>{line.materialCode}</TableCell>
                           <TableCell>{line.materialName || "-"}</TableCell>
-                          <TableCell>{line.batchCode}</TableCell>
-                          <TableCell className="text-right">
-                            {line.qty}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={cn(
-                                "rounded-full",
-                                line.status === "RECEIVED"
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-amber-50 text-amber-700",
-                              )}
-                            >
-                              {line.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{line.receivedBy ?? "-"}</TableCell>
-                          <TableCell className="text-right">
-                            {line.status === "OUT" ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleReceive(line.id)}
-                              >
-                                Tandai diterima
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                {line.receivedAt
-                                  ? new Date(
-                                      line.receivedAt,
-                                    ).toLocaleDateString("id-ID")
-                                  : "-"}
-                              </span>
-                            )}
-                          </TableCell>
+                          <TableCell className="text-right">{line.qty}</TableCell>
+                          <TableCell>{line.note || "-"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

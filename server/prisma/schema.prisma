@@ -301,15 +301,15 @@ model ConvectionOutboundLine {
 }
 
 model RawMaterialInbound {
-  id          String                 @id @default(uuid())
-  code        String                 @unique
+  id          String                @id @default(uuid())
+  code        String                @unique
   vendor      String
   date        DateTime
   note        String?
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
   createdById String?
-  createdBy   User?                  @relation("RawInboundCreatedBy", fields: [createdById], references: [id])
+  createdBy   User?                 @relation("RawInboundCreatedBy", fields: [createdById], references: [id])
   lines       RawMaterialInboundLine[]
 
   @@index([createdById])

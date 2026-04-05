@@ -12,9 +12,30 @@
 .env
 .env.*
 
-# Private data/workbooks
-GUDANG DRUMBAND & MARCHINGBAND IAS PRODUCTAMA new.xlsx
-doc/*.xlsx
+# Local tooling and generated artifacts
+.venv/
+node_modules/
+dist/
+build/
+coverage/
+*.perm
+*.xlsx
+*.xlsm
+*.py
+*.pyc
+__pycache__/
+.~lock.*#
+tmp_*.ts
+
+# Generated outputs and temporary scripts inside source folders
+scripts/output/
+server/scripts/output/
+client/scripts/tmp-*
+server/scripts/tmp-*
+scripts/tmp-*
 
 # SSH keys directory
 server/ssh-key-iasproductama/
+
+
+

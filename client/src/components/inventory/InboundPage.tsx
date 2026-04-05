@@ -139,6 +139,9 @@ export function InboundPage({
   fixedCategory,
 }: {
   fixedCategory?: string;
+  canReadRawMaterials = false,
+}: {
+  canReadRawMaterials?: boolean;
 }) {
   const [vendor, setVendor] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -189,9 +192,19 @@ export function InboundPage({
 
   const fetchItems = useCallback(async () => {
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<RemoteItem[]>([]);
       const [itemsData, rawData] = await Promise.all([
         httpJson<RemoteItem[]>(ITEMS_URL),
-        httpJson<RemoteItem[]>(RAW_URL),
+        rawPromise,
       ]);
 
       setRemoteItems(itemsData);
@@ -203,7 +216,7 @@ export function InboundPage({
       );
       pushToast("destructive", "Gagal memuat stok", message);
     }
-  }, []);
+  }, [canReadRawMaterials]);
 
   useEffect(() => {
     fetchItems();
@@ -889,6 +902,7 @@ export function InboundPage({
                 {fixedCategory
                   ? `Catat penerimaan stok ${fixedCategory} dengan detail yang terstruktur.`
                   : "Catat penerimaan stok baru atau retur vendor dengan detail yang terstruktur."}
+                Catat barang masuk dari vendor atau retur.
               </p>
             </div>
             <div className="ml-auto flex items-center gap-2">

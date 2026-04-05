@@ -15,6 +15,7 @@ import { ProductionModule } from './production/production.module.js';
 import { BomModule } from './bom/bom.module.js';
 import { ProductsModule } from './products/products.module.js';
 import { ConvectionModule } from './convection/convection.module.js';
+import { HistoryModule } from './history/history.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ConvectionModule } from './convection/convection.module.js';
     BomModule,
     ProductsModule,
     ConvectionModule,
+    HistoryModule,
   ],
   controllers: [AppController],
   providers: [AppService, JwtAuthGuard, RolesGuard],

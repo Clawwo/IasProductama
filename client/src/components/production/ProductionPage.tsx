@@ -93,7 +93,11 @@ function isValidDateString(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-export function ProductionPage() {
+export function ProductionPage({
+  canReadRawMaterials = false,
+}: {
+  canReadRawMaterials?: boolean;
+}) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -151,9 +155,19 @@ export function ProductionPage() {
 
   const fetchData = useCallback(async () => {
     try {
+      const rawPromise = canReadRawMaterials
+        ? httpJson<RemoteItem[]>(RAW_URL).catch((err: unknown) => {
+            const status =
+              typeof err === "object" && err !== null && "status" in err
+                ? (err as { status?: number }).status
+                : undefined;
+            if (status === 403) return [];
+            throw err;
+          })
+        : Promise.resolve<RemoteItem[]>([]);
       const [itemsData, rawData] = await Promise.all([
         httpJson<RemoteItem[]>(PRODUCTS_URL),
-        httpJson<RemoteItem[]>(RAW_URL),
+        rawPromise,
       ]);
       setProducts(itemsData);
       setRawItems(rawData);
@@ -162,7 +176,7 @@ export function ProductionPage() {
         err instanceof Error ? err.message : "Tidak bisa memuat data.";
       pushToast("destructive", "Gagal memuat", msg);
     }
-  }, [pushToast]);
+  }, [canReadRawMaterials, pushToast]);
 
   useEffect(() => {
     fetchData();
@@ -748,8 +762,7 @@ export function ProductionPage() {
                 Catat Produksi
               </h1>
               <p className="text-sm text-slate-600">
-                Kurangi stok bahan baku dan tambah stok barang jadi dalam satu
-                langkah.
+                Catat produksi: bahan baku berkurang, barang jadi bertambah.
               </p>
             </div>
           </div>
