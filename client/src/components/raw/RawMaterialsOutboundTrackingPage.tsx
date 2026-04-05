@@ -30,6 +30,12 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import {
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  parseInputToBaseQty,
+  unitLabel,
+} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = ((import.meta as { env?: Env }).env?.VITE_API_BASE ?? "")
@@ -45,6 +51,7 @@ type RawMaterial = {
   category?: string;
   subCategory?: string;
   kind?: string;
+  unit?: string;
   stock: number;
 };
 
@@ -245,6 +252,11 @@ export function RawMaterialsOutboundTrackingPage() {
     return map;
   }, [rawItems]);
 
+  const selectedUnit = useMemo(() => {
+    const code = lineForm.code.trim();
+    return normalizeItemUnit(rawLookup.get(code)?.unit);
+  }, [lineForm.code, rawLookup]);
+
   const filteredItems = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     if (!term) return rawItems;
@@ -278,11 +290,18 @@ export function RawMaterialsOutboundTrackingPage() {
   const validateLine = (line: LineFormState | LineForm) => {
     const code = line.code.trim();
     const batch = line.batchCode.trim();
-    const qty = Number(line.qty);
     if (!code) return "Pilih kode bahan baku.";
     if (!rawLookup.has(code)) return "Kode tidak dikenal. Pilih dari daftar.";
     if (!batch) return "Batch wajib diisi.";
-    if (!Number.isFinite(qty) || qty <= 0) return "Qty minimal 1.";
+
+    const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
+    if (typeof line.qty === "string") {
+      const parsed = parseInputToBaseQty(line.qty, unit);
+      if (!parsed.ok) return parsed.message;
+    } else {
+      const qty = Number(line.qty);
+      if (!Number.isFinite(qty) || qty <= 0) return "Qty harus lebih dari 0.";
+    }
     return null;
   };
 
@@ -294,7 +313,13 @@ export function RawMaterialsOutboundTrackingPage() {
     }
     const code = lineForm.code.trim();
     const batch = lineForm.batchCode.trim();
-    const qty = Number(lineForm.qty);
+    const unit = normalizeItemUnit(rawLookup.get(code)?.unit);
+    const parsed = parseInputToBaseQty(lineForm.qty, unit);
+    if (!parsed.ok) {
+      setFormError(parsed.message);
+      return;
+    }
+    const qty = parsed.baseQty;
     const matched = rawLookup.get(code);
     setFormError(null);
     setLines((prev) => {
@@ -612,7 +637,7 @@ export function RawMaterialsOutboundTrackingPage() {
                             {item.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {item.stock ?? 0}
+                            Stok: {formatBaseQtyWithUnit(item.stock ?? 0, normalizeItemUnit(item.unit))}
                           </span>
                         </div>
                         <span className="text-xs text-slate-600 truncate max-w-72">
@@ -659,8 +684,9 @@ export function RawMaterialsOutboundTrackingPage() {
               Qty
             </label>
             <Input
-              type="number"
-              min={1}
+              type="text"
+              inputMode={selectedUnit === "METER" ? "decimal" : "numeric"}
+              placeholder={`Qty (${unitLabel(selectedUnit)})`}
               value={lineForm.qty}
               onChange={(e) =>
                 setLineForm((prev) => ({
@@ -721,7 +747,12 @@ export function RawMaterialsOutboundTrackingPage() {
                     <TableCell>{line.code}</TableCell>
                     <TableCell>{line.name || "-"}</TableCell>
                     <TableCell>{line.batchCode}</TableCell>
-                    <TableCell className="text-right">{line.qty}</TableCell>
+                    <TableCell className="text-right">
+                      {formatBaseQtyWithUnit(
+                        line.qty,
+                        normalizeItemUnit(rawLookup.get(line.code)?.unit),
+                      )}
+                    </TableCell>
                     <TableCell>{line.note || "-"}</TableCell>
                     <TableCell className="text-right">
                       <Button

@@ -100,6 +100,7 @@ model Item {
   category    String?
   subCategory String?
   kind        String?
+  unit        String   @default("PCS")
   stock       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -111,6 +112,7 @@ model BahanBaku {
   category  String?
   subCategory String?
   kind      String?
+  unit      String   @default("PCS")
   stock     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt

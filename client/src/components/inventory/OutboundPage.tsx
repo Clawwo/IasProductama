@@ -46,6 +46,13 @@ import {
   UserRound,
 } from "lucide-react";
 import { inventoryItemsWithKind } from "./items";
+import {
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  parseInputToBaseQty,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 const API_BASE = (
@@ -114,6 +121,7 @@ type RemoteItem = {
   category?: string;
   subCategory?: string;
   kind?: string;
+  unit?: string;
   stock: number;
 };
 
@@ -296,6 +304,7 @@ export function OutboundPage({
         category: it.category ?? "Bahan Baku",
         subCategory: it.subCategory,
         kind: it.kind ?? it.subCategory,
+        unit: it.unit,
         stock: it.stock ?? 0,
       }));
 
@@ -306,6 +315,14 @@ export function OutboundPage({
     () => mergedItems.find((it) => it.code === lineItem.code),
     [mergedItems, lineItem.code],
   );
+
+  const unitByCode = useMemo(() => {
+    const map = new Map<string, ItemUnit>();
+    mergedItems.forEach((it) => map.set(it.code, normalizeItemUnit(it.unit)));
+    return map;
+  }, [mergedItems]);
+
+  const selectedUnit = normalizeItemUnit(selectedItem?.unit);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -440,9 +457,17 @@ export function OutboundPage({
 
   const totals = useMemo(() => {
     const totalItem = lines.length;
-    const totalQty = lines.reduce((sum, l) => sum + l.qty, 0);
-    return { totalItem, totalQty };
-  }, [lines]);
+    const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    for (const line of lines) {
+      const unit = unitByCode.get(line.code) ?? "PCS";
+      byUnit[unit] += line.qty;
+    }
+    const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+      .filter(([, qty]) => qty > 0)
+      .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+    const totalQtyText = parts.length ? parts.join(" • ") : "0";
+    return { totalItem, totalQtyText };
+  }, [lines, unitByCode]);
 
   useEffect(() => {
     setRingSub("all");
@@ -704,15 +729,20 @@ export function OutboundPage({
   );
 
   function addLine() {
-    const qty = Number(lineItem.qty);
-    if (!lineItem.code || !lineItem.name) {
+    const code = lineItem.code.trim();
+    const target = mergedItems.find((it) => it.code === code);
+    if (!code || !target) {
       setFormError("Pilih barang terlebih dahulu.");
       return;
     }
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setFormError("Qty harus lebih dari 0.");
+
+    const unit = unitByCode.get(code) ?? "PCS";
+    const parsed = parseInputToBaseQty(lineItem.qty, unit);
+    if (!parsed.ok) {
+      setFormError(parsed.message);
       return;
     }
+    const qty = parsed.baseQty;
     const newNote = lineItem.note.trim();
     setLines((prev) => {
       const existing = prev.find((l) => l.code === lineItem.code);
@@ -731,8 +761,8 @@ export function OutboundPage({
         ...prev,
         {
           id: crypto.randomUUID(),
-          code: lineItem.code,
-          name: lineItem.name,
+          code,
+          name: target.name ?? code,
           qty,
           note: newNote || undefined,
         },
@@ -944,8 +974,8 @@ export function OutboundPage({
               sub="Baris keluar"
             />
             <SummaryCard
-              label="Total qty (pcs)"
-              value={String(totals.totalQty)}
+              label="Total qty"
+              value={totals.totalQtyText}
               sub="Semua baris"
             />
             <SummaryCard
@@ -1052,7 +1082,7 @@ export function OutboundPage({
                           stockBadgeClass,
                         )}
                       >
-                        Stok: {selectedItem?.stock ?? 0}
+                        Stok: {formatBaseQtyWithUnit(selectedItem?.stock ?? 0, selectedUnit)}
                       </span>
                     ) : null}
                     <Search className="size-4 text-slate-500" />
@@ -1124,7 +1154,7 @@ export function OutboundPage({
                             {it.code}
                           </span>
                           <span className="text-xs rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">
-                            Stok: {it.stock ?? 0}
+                            Stok: {formatBaseQtyWithUnit(it.stock ?? 0, unitByCode.get(it.code) ?? "PCS")}
                           </span>
                         </div>
                         <span
@@ -1152,8 +1182,9 @@ export function OutboundPage({
               }
             />
             <Input
-              type="number"
-              min={1}
+              type="text"
+              inputMode={selectedUnit === "METER" ? "decimal" : "numeric"}
+              placeholder={`Qty (${unitLabel(selectedUnit)})`}
               value={lineItem.qty}
               onChange={(e) =>
                 setLineItem((l) => ({ ...l, qty: e.target.value }))
@@ -1186,7 +1217,7 @@ export function OutboundPage({
                 <TableHead className="w-12">No</TableHead>
                 <TableHead>Kode</TableHead>
                 <TableHead>Nama Barang</TableHead>
-                <TableHead className="w-32">Qty (pcs)</TableHead>
+                <TableHead className="w-32">Qty</TableHead>
                 <TableHead>Catatan</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
@@ -1199,7 +1230,9 @@ export function OutboundPage({
                     {line.code}
                   </TableCell>
                   <TableCell className="text-slate-800">{line.name}</TableCell>
-                  <TableCell className="font-semibold">{line.qty}</TableCell>
+                  <TableCell className="font-semibold">
+                    {formatBaseQtyWithUnit(line.qty, unitByCode.get(line.code) ?? "PCS")}
+                  </TableCell>
                   <TableCell className="text-slate-600">
                     {line.note || "-"}
                   </TableCell>

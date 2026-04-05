@@ -43,6 +43,15 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import {
+  baseQtyToDisplayNumber,
+  baseQtyToInputString,
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  parseInputToBaseQty,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 type Env = { VITE_API_BASE?: string };
 type StockStatus = "aman" | "menipis" | "kritis";
@@ -53,7 +62,7 @@ const API_BASE = (
   .replace(/\/$/, "");
 const RAW_URL = `${API_BASE}/api/raw-materials`;
 
-export function RawMaterialsPage() {
+export function RawMaterialsPage({ readOnly }: { readOnly?: boolean }) {
   const [rows, setRows] = useState<
     Array<{
       code: string;
@@ -61,6 +70,7 @@ export function RawMaterialsPage() {
       category?: string;
       subCategory?: string;
       kind?: string;
+      unit?: string;
       stock: number;
     }>
   >([]);
@@ -91,7 +101,8 @@ export function RawMaterialsPage() {
     category: "",
     subCategory: "",
     kind: "",
-    stock: 0,
+    unit: "PCS" as ItemUnit,
+    stock: "0",
   });
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
 
@@ -168,7 +179,7 @@ export function RawMaterialsPage() {
       } ${r.kind ?? ""}`
         .toLowerCase()
         .includes(term);
-      const status = getStatus(r.stock);
+      const status = getStatus(r.stock, r.unit);
       const statusMatch = statusFilter ? status === statusFilter : true;
       const catMatch =
         selectedCategories.length === 0 ||
@@ -208,10 +219,17 @@ export function RawMaterialsPage() {
     selectedTypes,
   ]);
 
-  const totalStock = useMemo(
-    () => filtered.reduce((sum, r) => sum + r.stock, 0),
-    [filtered],
-  );
+  const totalStockText = useMemo(() => {
+    const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    for (const row of filtered) {
+      const unit = normalizeItemUnit(row.unit);
+      byUnit[unit] += row.stock;
+    }
+    const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+      .filter(([, qty]) => qty > 0)
+      .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+    return parts.length ? parts.join(" • ") : "0";
+  }, [filtered]);
   const totalItems = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
   const currentPage = Math.min(page, totalPages);
@@ -221,6 +239,7 @@ export function RawMaterialsPage() {
   }, [filtered, currentPage]);
 
   function openAddForm() {
+    if (readOnly) return;
     setEditing(null);
     setForm({
       code: "",
@@ -228,13 +247,16 @@ export function RawMaterialsPage() {
       category: "",
       subCategory: "",
       kind: "",
-      stock: 0,
+      unit: "PCS",
+      stock: "0",
     });
     setFormError(null);
     setShowForm(true);
   }
 
   function openEditForm(row: (typeof rows)[number]) {
+    if (readOnly) return;
+    const unit = normalizeItemUnit(row.unit);
     setEditing(row);
     setForm({
       code: row.code,
@@ -242,7 +264,8 @@ export function RawMaterialsPage() {
       category: row.category ?? "",
       subCategory: row.subCategory ?? "",
       kind: row.kind ?? "",
-      stock: row.stock,
+      unit,
+      stock: baseQtyToInputString(row.stock, unit),
     });
     setFormError(null);
     setShowForm(true);
@@ -254,8 +277,11 @@ export function RawMaterialsPage() {
       setFormError("Kode dan nama wajib diisi.");
       return;
     }
-    if (form.stock < 0) {
-      setFormError("Stok tidak boleh negatif.");
+
+    const unit = normalizeItemUnit(form.unit);
+    const parsedStock = parseInputToBaseQty(form.stock, unit, 0);
+    if (!parsedStock.ok) {
+      setFormError(parsedStock.message);
       return;
     }
 
@@ -265,7 +291,8 @@ export function RawMaterialsPage() {
       category: form.category.trim() || undefined,
       subCategory: form.subCategory.trim() || undefined,
       kind: form.kind.trim() || undefined,
-      stock: form.stock,
+      unit,
+      stock: parsedStock.baseQty,
     };
 
     setSaving(true);
@@ -305,6 +332,10 @@ export function RawMaterialsPage() {
 
   async function confirmDelete() {
     if (!pendingDelete) return;
+    if (readOnly) {
+      setPendingDelete(null);
+      return;
+    }
     await deleteItem(pendingDelete.code);
     setPendingDelete(null);
   }
@@ -338,22 +369,35 @@ export function RawMaterialsPage() {
     );
   }
 
-  function getStatus(stock: number): StockStatus {
-    if (stock <= 5) return "kritis";
-    if (stock <= 14) return "menipis";
+  function getStatus(stock: number, unit?: string): StockStatus {
+    const displayStock = baseQtyToDisplayNumber(
+      stock,
+      normalizeItemUnit(unit),
+    );
+    if (displayStock <= 5) return "kritis";
+    if (displayStock <= 14) return "menipis";
     return "aman";
   }
 
   const exportCsv = () => {
     if (filtered.length === 0) return;
-    const header = ["Kode", "Nama", "Kategori", "Subkategori", "Jenis", "Stok"];
+    const header = [
+      "Kode",
+      "Nama",
+      "Kategori",
+      "Subkategori",
+      "Jenis",
+      "Stok",
+      "Satuan",
+    ];
     const csvRows = filtered.map((r) => [
       r.code,
       r.name ?? "",
       r.category ?? "",
       r.subCategory ?? "",
       r.kind ?? "",
-      r.stock,
+      baseQtyToDisplayNumber(r.stock, normalizeItemUnit(r.unit)),
+      unitLabel(normalizeItemUnit(r.unit)),
     ]);
     const csv = [header, ...csvRows]
       .map((cols) =>
@@ -447,7 +491,7 @@ export function RawMaterialsPage() {
                   Total stok
                 </p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {totalStock}
+                  {totalStockText}
                 </p>
               </div>
             </div>
@@ -462,13 +506,15 @@ export function RawMaterialsPage() {
             <Download className="mr-2 size-4" />
             Export CSV
           </Button>
-          <Button
-            className="bg-sky-600 text-white hover:bg-sky-700"
-            onClick={openAddForm}
-          >
-            <Plus className="mr-2 size-4" />
-            Tambah Barang
-          </Button>
+          {!readOnly ? (
+            <Button
+              className="bg-sky-600 text-white hover:bg-sky-700"
+              onClick={openAddForm}
+            >
+              <Plus className="mr-2 size-4" />
+              Tambah Barang
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -751,16 +797,21 @@ export function RawMaterialsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={getStatus(row.stock)} />
+                        <StatusBadge status={getStatus(row.stock, row.unit)} />
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {row.stock}
+                        {formatBaseQtyWithUnit(
+                          row.stock,
+                          normalizeItemUnit(row.unit),
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <ActionsMenu
-                          onEdit={() => openEditForm(row)}
-                          onDelete={() => setPendingDelete(row)}
-                        />
+                        {!readOnly ? (
+                          <ActionsMenu
+                            onEdit={() => openEditForm(row)}
+                            onDelete={() => setPendingDelete(row)}
+                          />
+                        ) : null}
                       </TableCell>
                     </TableRow>
                   );
@@ -804,7 +855,7 @@ export function RawMaterialsPage() {
           </Pager>
         </div>
       </div>
-      {pendingDelete ? (
+      {!readOnly && pendingDelete ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -836,7 +887,7 @@ export function RawMaterialsPage() {
         </div>
       ) : null}
 
-      {showForm ? (
+      {!readOnly && showForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-center justify-between">
@@ -926,14 +977,34 @@ export function RawMaterialsPage() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
+                  Satuan
+                </label>
+                <select
+                  className="h-11 w-full rounded-lg border px-3 text-sm shadow-sm"
+                  value={form.unit}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      unit: normalizeItemUnit(e.target.value),
+                    }))
+                  }
+                >
+                  <option value="PCS">pcs</option>
+                  <option value="GRAM">gram</option>
+                  <option value="METER">m</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700">
                   Stok
                 </label>
                 <Input
-                  type="number"
-                  min={0}
+                  type="text"
+                  inputMode={form.unit === "METER" ? "decimal" : "numeric"}
+                  placeholder={`Stok (${unitLabel(normalizeItemUnit(form.unit))})`}
                   value={form.stock}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, stock: Number(e.target.value) }))
+                    setForm((f) => ({ ...f, stock: e.target.value }))
                   }
                   className="h-11"
                 />

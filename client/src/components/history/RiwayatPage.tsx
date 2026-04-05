@@ -38,6 +38,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { httpJson } from "@/lib/http"; // Added import for httpJson
+import {
+  baseQtyToDisplayNumber,
+  formatBaseQtyWithUnit,
+  normalizeItemUnit,
+  type ItemUnit,
+  unitLabel,
+} from "@/lib/item-units";
 
 // Keep API construction consistent with other pages
 type Env = { VITE_API_BASE?: string };
@@ -137,6 +144,16 @@ const resolveActor = (user?: UserRef | null) => {
 };
 
 export function RiwayatPage() {
+  const [items, setItems] = useState<
+    Array<{ code: string; name?: string; unit?: string }>
+  >([]);
+  const [rawItems, setRawItems] = useState<
+    Array<{ code: string; name?: string; unit?: string }>
+  >([]);
+  const [inbound, setInbound] = useState<InboundApi[]>([]);
+  const [outbound, setOutbound] = useState<OutboundApi[]>([]);
+  const [rawOutbound, setRawOutbound] = useState<RawOutboundApi[]>([]);
+  const [production, setProduction] = useState<ProductionApi[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [stats, setStats] = useState<HistoryStats>({
     total: 0,
@@ -183,6 +200,41 @@ export function RiwayatPage() {
     }>;
   } | null>(null);
   const perPage = 20;
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadItems = async () => {
+      try {
+        const [data, rawData] = await Promise.all([
+          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
+            ITEMS_URL,
+          ),
+          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
+            RAW_ITEMS_URL,
+          ),
+        ]);
+        if (!cancelled) {
+          setItems(data);
+          setRawItems(rawData);
+        }
+      } catch (err) {
+        // leave items empty if it fails; riwayat will fallback to code
+        console.warn("Gagal memuat data barang untuk riwayat", err);
+      }
+    };
+    loadItems();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const unitByCode = useMemo(() => {
+    const map = new Map<string, ItemUnit>();
+    [...items, ...rawItems].forEach((it) =>
+      map.set(it.code, normalizeItemUnit(it.unit)),
+    );
+    return map;
+  }, [items, rawItems]);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -236,6 +288,145 @@ export function RiwayatPage() {
     loadHistory();
   }, [loadHistory]);
 
+  const movements: Movement[] = useMemo(() => {
+    const nameMap = new Map(
+      [...items, ...rawItems].map((it) => [it.code, it.name]),
+    );
+    const mapLines = (
+      rows: Array<InboundApi | OutboundApi>,
+      direction: Movement["direction"],
+    ): Movement[] =>
+      rows.flatMap((rec) => {
+        const sourceDate = rec.createdAt ?? rec.date ?? "";
+        return rec.lines.map((line, idx) => ({
+          id: `${direction}-${rec.id}-${idx}-${line.code}`,
+          direction,
+          kind: "Barang" as const,
+          category: "Barang" as const,
+          txCode: rec.code ?? "-",
+          recordId: rec.id,
+          itemCode: line.code,
+          name: line.name ?? nameMap.get(line.code) ?? line.code,
+          qty: line.qty,
+          actor: resolveActor(rec.createdBy),
+          time: formatDateTime(sourceDate),
+          rawTime: sourceDate,
+          timestamp: Date.parse(sourceDate) || 0,
+          note: line.note ?? rec.note,
+        }));
+      });
+
+    const rawLines = rawOutbound
+      .filter((rec) => rec.status === "RECEIVED")
+      .flatMap((rec) => {
+        const sourceDate = rec.createdAt ?? rec.date ?? "";
+        return rec.lines
+          .filter((line) => line.status === "RECEIVED" || !line.status)
+          .map((line, idx) => {
+            const code = line.materialCode ?? "";
+            const name = line.materialName ?? nameMap.get(code) ?? code;
+            return {
+              id: `Bahan-${rec.id}-${idx}-${code}`,
+              direction: "Keluar" as const,
+              kind: "Bahan" as const,
+              category: "Bahan baku" as const,
+              txCode: rec.code ?? "-",
+              recordId: rec.id,
+              itemCode: code,
+              name,
+              qty: line.qty,
+              actor: resolveActor(rec.createdBy),
+              time: formatDateTime(sourceDate),
+              rawTime: sourceDate,
+              timestamp: Date.parse(sourceDate) || 0,
+              note: line.note ?? rec.note ?? undefined,
+              batchCode: line.batchCode,
+            };
+          });
+      });
+
+    const productionFinished = production.flatMap((rec) => {
+      const sourceDate = rec.createdAt ?? rec.date ?? "";
+      return rec.finishedLines.map((line, idx) => ({
+        id: `ProdIn-${rec.id}-${idx}-${line.code}`,
+        direction: "Masuk" as const,
+        kind: "Barang" as const,
+        category: "Produksi" as const,
+        txCode: rec.code ?? "-",
+        recordId: rec.id,
+        itemCode: line.code,
+        name: line.name ?? nameMap.get(line.code) ?? line.code,
+        qty: line.qty,
+        actor: undefined,
+        time: formatDateTime(sourceDate),
+        rawTime: sourceDate,
+        timestamp: Date.parse(sourceDate) || 0,
+        note: line.note ?? rec.note ?? undefined,
+      }));
+    });
+
+    const productionRaw = production.flatMap((rec) => {
+      const sourceDate = rec.createdAt ?? rec.date ?? "";
+      return rec.rawLines.map((line, idx) => ({
+        id: `ProdOut-${rec.id}-${idx}-${line.code}`,
+        direction: "Keluar" as const,
+        kind: "Bahan" as const,
+        category: "Produksi" as const,
+        txCode: rec.code ?? "-",
+        recordId: rec.id,
+        itemCode: line.code,
+        name: line.name ?? nameMap.get(line.code) ?? line.code,
+        qty: line.qty,
+        actor: undefined,
+        time: formatDateTime(sourceDate),
+        rawTime: sourceDate,
+        timestamp: Date.parse(sourceDate) || 0,
+        note: line.note ?? rec.note ?? undefined,
+      }));
+    });
+
+    const combined = [
+      ...mapLines(inbound, "Masuk"),
+      ...mapLines(outbound, "Keluar"),
+      ...rawLines,
+      ...productionFinished,
+      ...productionRaw,
+    ];
+
+    return combined.sort((a, b) => b.timestamp - a.timestamp);
+  }, [inbound, outbound, rawOutbound, production, items, rawItems]);
+
+  const stats = useMemo(() => {
+    const total = movements.length;
+    const inboundRows = movements.filter((m) => m.direction === "Masuk");
+    const outboundRows = movements.filter((m) => m.direction === "Keluar");
+    const outboundGoods = outboundRows.filter((m) => m.kind === "Barang");
+    const outboundRaw = outboundRows.filter((m) => m.kind === "Bahan");
+
+    const sumByUnitText = (rows: Movement[]) => {
+      const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+      for (const row of rows) {
+        const unit = unitByCode.get(row.itemCode) ?? "PCS";
+        byUnit[unit] += row.qty;
+      }
+      const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
+        .filter(([, qty]) => qty > 0)
+        .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
+      return parts.length ? parts.join(" • ") : "0";
+    };
+
+    return {
+      total,
+      inboundCount: inboundRows.length,
+      outboundCount: outboundRows.length,
+      outboundGoodsCount: outboundGoods.length,
+      outboundRawCount: outboundRaw.length,
+      inboundQtyText: sumByUnitText(inboundRows),
+      outboundGoodsQtyText: sumByUnitText(outboundGoods),
+      outboundRawQtyText: sumByUnitText(outboundRaw),
+    };
+  }, [movements, unitByCode]);
+
   // Draft API belum tersedia di halaman ini; kosongkan agar kompilasi tetap aman
   const drafts = useMemo<DraftApi[]>(() => [], []);
 
@@ -284,6 +475,23 @@ export function RiwayatPage() {
       "Keterangan",
     ];
 
+    const data: Array<Array<string | number>> = rows.map((row) => {
+      const unit = unitByCode.get(row.itemCode) ?? "PCS";
+      const absBaseQty = Math.abs(row.qty);
+      const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
+      return [
+        row.txCode,
+        toDateOnly(row.rawTime, row.time),
+        row.itemCode,
+        row.name,
+        displayQty,
+        unitLabel(unit),
+        row.actor ?? "",
+        row.kind,
+        row.batchCode ?? "",
+        row.note ?? "",
+      ];
+    });
     const data: Array<Array<string | number>> = rows.map((row) => [
       row.txCode,
       toDateOnly(row.rawTime, formatDateTime(row.rawTime)),
@@ -505,7 +713,7 @@ export function RiwayatPage() {
                 {stats.inboundCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.inboundQty} pcs
+                {stats.inboundQtyText}
               </p>
             </div>
           </div>
@@ -523,7 +731,7 @@ export function RiwayatPage() {
                 {stats.outboundGoodsCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundQty - stats.outboundRawQty} pcs
+                {stats.outboundGoodsQtyText}
               </p>
             </div>
           </div>
@@ -539,7 +747,7 @@ export function RiwayatPage() {
                 {stats.outboundRawCount} baris
               </p>
               <p className="text-xs text-muted-foreground">
-                {stats.outboundRawQty} pcs
+                {stats.outboundRawQtyText}
               </p>
             </div>
           </div>
@@ -886,7 +1094,9 @@ export function RiwayatPage() {
                     const lineCategory = line.category ?? detailData.category;
                     const lineKind = line.kind ?? detailData.kind;
                     const isIn = lineDirection === "Masuk";
-                    const signedQty = `${isIn ? "+" : "-"}${line.qty}`;
+                    const unit = unitByCode.get(line.code) ?? "PCS";
+                    const sign = isIn ? "+" : "-";
+                    const signedQty = `${sign}${formatBaseQtyWithUnit(Math.abs(line.qty), unit)}`;
                     return (
                       <div
                         key={`${line.code}-${idx}`}
@@ -942,7 +1152,7 @@ export function RiwayatPage() {
                               </p>
                             ) : null}
                           </div>
-                          <span className="font-semibold">{signedQty} pcs</span>
+                          <span className="font-semibold">{signedQty}</span>
                         </div>
                         {line.note ? (
                           <p className="mt-1 text-xs text-muted-foreground">
