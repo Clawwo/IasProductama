@@ -61,7 +61,7 @@ type RawMaterial = {
 };
 
 function getRawTypeValue(item: { kind?: string; subCategory?: string }) {
-  return String(item.kind ?? item.subCategory ?? "").trim();
+  return String(item.subCategory ?? item.kind ?? "").trim();
 }
 
 type OutboundLine = {
