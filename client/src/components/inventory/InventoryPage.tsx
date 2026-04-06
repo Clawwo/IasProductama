@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HttpError, httpJson } from "@/lib/http";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,15 +58,11 @@ import {
   Trash2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import {
-  inferKind,
-  inventoryItemsWithKind,
-  type InventoryItem,
-  type InventoryItemWithKind,
-} from "./items";
+import { inferKind, inventoryItemsWithKind, type InventoryItem } from "./items";
 import {
   baseQtyToDisplayNumber,
   baseQtyToInputString,
+  formatBaseQty,
   formatBaseQtyWithUnit,
   normalizeItemUnit,
   parseInputToBaseQty,
@@ -121,7 +118,9 @@ const normalizeCategoryForFilter = (value?: string): string => {
   return trimmed;
 };
 
-type InventoryListItem = InventoryItemWithKind & {
+type InventoryListItem = Omit<InventoryItem, "kind" | "subCategory"> & {
+  kind?: string;
+  subCategory?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -179,6 +178,7 @@ export function InventoryPage({
     code: "",
     name: "",
     category: fixedCategoryValue,
+    subCategory: "",
     unit: "PCS" as ItemUnit,
     stock: "0",
   });
@@ -189,6 +189,7 @@ export function InventoryPage({
   const [statusFilter, setStatusFilter] = useState<
     "all" | "aman" | "menipis" | "kritis"
   >("all");
+  const [rawJenisFilter, setRawJenisFilter] = useState("all");
   const [pendingDelete, setPendingDelete] = useState<InventoryListItem | null>(
     null,
   );
@@ -233,19 +234,19 @@ export function InventoryPage({
           .filter((it) => Boolean(it.code))
           .map((it) => {
             const category = it.category ?? fixedCategoryValue;
+            const rawSubCategory = (it.subCategory ?? "").trim();
+            const rawKind = (it.kind ?? "").trim();
             const merged: InventoryListItem = {
               code: it.code,
               name: it.name ?? "",
               category: category ?? "",
-              subCategory: normalizeSubCategory(it.subCategory),
+              subCategory: rawSubCategory || undefined,
               stock:
                 typeof it.stock === "number" && Number.isFinite(it.stock)
                   ? it.stock
                   : 0,
               unit: it.unit,
-              kind:
-                (it.kind as InventoryItemWithKind["kind"] | undefined) ??
-                inferKind({ code: it.code, category: category ?? "" }),
+              kind: rawKind || undefined,
               createdAt: it.createdAt,
               updatedAt: it.updatedAt,
             };
@@ -307,10 +308,7 @@ export function InventoryPage({
           ...merged,
           createdAt: it?.createdAt,
           updatedAt: it?.updatedAt,
-          kind:
-            (it?.kind as InventoryItemWithKind["kind"] | undefined) ??
-            base?.kind ??
-            inferKind(merged),
+          kind: it?.kind ?? base?.kind ?? inferKind(merged),
         };
       });
       setItems(fromApi);
@@ -343,6 +341,16 @@ export function InventoryPage({
     });
     return Array.from(set).sort();
   }, [items]);
+
+  const rawJenisOptions = useMemo(() => {
+    if (!isRawDataSource) return [] as string[];
+    const set = new Set<string>();
+    items.forEach((item) => {
+      const value = String(item.subCategory ?? item.kind ?? "").trim();
+      if (value) set.add(value);
+    });
+    return Array.from(set).sort();
+  }, [isRawDataSource, items]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -388,6 +396,11 @@ export function InventoryPage({
         !isProduct ||
         productSubCategory === "all" ||
         item.subCategory === productSubCategory;
+      const rawJenisValue = String(item.subCategory ?? item.kind ?? "").trim();
+      const matchRawJenis =
+        !isRawDataSource ||
+        rawJenisFilter === "all" ||
+        (rawJenisValue && rawJenisValue === rawJenisFilter);
       const rawItemDate = item.updatedAt ?? item.createdAt;
       const itemTimestamp = rawItemDate ? Date.parse(rawItemDate) : Number.NaN;
       const matchDateRange =
@@ -405,6 +418,7 @@ export function InventoryPage({
         matchRingColor &&
         matchRingHoles &&
         matchProductSub &&
+        matchRawJenis &&
         matchDateRange
       );
     });
@@ -420,10 +434,20 @@ export function InventoryPage({
     ringColor,
     ringHoles,
     productSubCategory,
+    rawJenisFilter,
     fixedCategoryFilter,
+    isRawDataSource,
   ]);
 
   const totalItems = filtered.length;
+  const stockSummary = useMemo(() => {
+    const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    for (const item of filtered) {
+      const unit = normalizeItemUnit(item.unit);
+      byUnit[unit] += item.stock;
+    }
+    return byUnit;
+  }, [filtered]);
   const totalStockText = useMemo(() => {
     const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
     for (const item of filtered) {
@@ -439,6 +463,10 @@ export function InventoryPage({
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
 
   const currentPage = Math.min(page, totalPages);
+  const summaryGridClass = cn(
+    "grid w-full gap-2 sm:gap-3 sm:grid-cols-2",
+    isRawDataSource ? "xl:grid-cols-4" : "xl:grid-cols-2",
+  );
 
   const ringSizes = useMemo(() => {
     const sizes = new Set<string>();
@@ -644,6 +672,7 @@ export function InventoryPage({
       code: "",
       name: "",
       category: fixedCategoryValue,
+      subCategory: "",
       unit: "PCS",
       stock: "0",
     });
@@ -660,6 +689,7 @@ export function InventoryPage({
       code: item.code,
       name: item.name,
       category: fixedCategoryValue || item.category,
+      subCategory: item.subCategory ?? "",
       unit,
       stock: baseQtyToInputString(item.stock, unit),
     });
@@ -671,8 +701,10 @@ export function InventoryPage({
   async function saveForm() {
     if (readOnly) return;
     setFormError(null);
+    const codeValue = form.code.trim();
+    const nameValue = form.name.trim();
     const categoryValue = (fixedCategoryValue || form.category).trim();
-    if (!form.code.trim() || !form.name.trim() || !categoryValue) {
+    if (!codeValue || !nameValue || !categoryValue) {
       setFormError("Kode, nama, dan kategori wajib diisi.");
       return;
     }
@@ -684,16 +716,33 @@ export function InventoryPage({
       return;
     }
 
-    const payload = {
-      code: form.code.trim(),
-      name: form.name.trim(),
+    const subCategoryValue = form.subCategory.trim();
+    const inferredKind = inferKind({
+      code: codeValue,
+      category: categoryValue,
+    });
+    const rawSubCategory = subCategoryValue || undefined;
+    const rawPayloadBase = {
+      name: nameValue,
+      category: categoryValue,
+      subCategory: rawSubCategory,
+      unit,
+      stock: parsedStock.baseQty,
+    };
+    const itemPayload = {
+      code: codeValue,
+      name: nameValue,
       category: categoryValue,
       unit,
       stock: parsedStock.baseQty,
-      kind: inferKind({ code: form.code.trim(), category: categoryValue }),
+      kind: inferredKind,
     };
+    const createPayload = isRawDataSource
+      ? { ...rawPayloadBase, code: codeValue }
+      : itemPayload;
+    const updatePayload = isRawDataSource ? rawPayloadBase : itemPayload;
 
-    if (!editing && items.some((it) => it.code === payload.code)) {
+    if (!editing && items.some((it) => it.code === codeValue)) {
       setFormError(
         "Kode sudah ada. Gunakan kode lain atau edit item tersebut.",
       );
@@ -704,7 +753,9 @@ export function InventoryPage({
     setFormError(null);
     try {
       let created = false;
-      const requestBody = JSON.stringify(payload);
+      const requestBody = JSON.stringify(
+        editing ? updatePayload : createPayload,
+      );
       const updateUrl = editing
         ? `${resourceUrl}/${encodeURIComponent(editing.code)}`
         : resourceUrl;
@@ -739,25 +790,26 @@ export function InventoryPage({
       }
 
       setItems((prev) => {
-        const targetCode = editing?.code ?? payload.code;
+        const targetCode = editing?.code ?? codeValue;
         const existingIndex = prev.findIndex((it) => it.code === targetCode);
         const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
         const merged: InventoryListItem = {
           ...existing,
-          code: savedItem.code ?? payload.code,
-          name: savedItem.name ?? payload.name,
-          category: savedItem.category ?? payload.category,
-          subCategory:
-            normalizeSubCategory(savedItem.subCategory) ??
-            existing?.subCategory,
+          code: savedItem.code ?? targetCode,
+          name: savedItem.name ?? nameValue,
+          category: savedItem.category ?? categoryValue,
+          subCategory: isRawDataSource
+            ? (savedItem.subCategory ?? rawSubCategory ?? existing?.subCategory)
+            : (normalizeSubCategory(savedItem.subCategory) ??
+              existing?.subCategory),
+          unit: savedItem.unit ?? unit,
           stock:
             typeof savedItem.stock === "number"
               ? savedItem.stock
-              : payload.stock,
-          kind:
-            (savedItem.kind as InventoryItemWithKind["kind"] | undefined) ??
-            existing?.kind ??
-            payload.kind,
+              : parsedStock.baseQty,
+          kind: isRawDataSource
+            ? (savedItem.kind ?? existing?.kind)
+            : (savedItem.kind ?? existing?.kind ?? inferredKind),
           createdAt: savedItem.createdAt ?? existing?.createdAt,
           updatedAt: savedItem.updatedAt ?? new Date().toISOString(),
         };
@@ -776,14 +828,14 @@ export function InventoryPage({
         pushToast(
           "default",
           "Barang diperbarui",
-          `${payload.name} berhasil disimpan.`,
+          `${nameValue} berhasil disimpan.`,
         );
       } else {
-        setRecentlyEditedCode(savedItem.code ?? payload.code);
+        setRecentlyEditedCode(savedItem.code ?? codeValue);
         pushToast(
           "default",
           "Barang ditambahkan",
-          `${payload.name} masuk ke daftar barang.`,
+          `${nameValue} masuk ke daftar barang.`,
         );
       }
 
@@ -929,7 +981,7 @@ export function InventoryPage({
         </header>
 
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className={summaryGridClass}>
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
               <div className="flex h-9 w-9 items-center justify-center rounded-md bg-sky-50 text-sky-600">
                 <Boxes className="h-5 w-5" />
@@ -943,19 +995,63 @@ export function InventoryPage({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-50 text-amber-600">
-                <Layers3 className="h-5 w-5" />
+            {isRawDataSource ? (
+              <>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+                    <Layers3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Stok PCS
+                    </p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {formatBaseQty(stockSummary.PCS, "PCS")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
+                    <Layers3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Stok Gram
+                    </p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {formatBaseQty(stockSummary.GRAM, "GRAM")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                    <Layers3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Stok Meter
+                    </p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {formatBaseQty(stockSummary.METER, "METER")}
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm min-w-40">
+                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-50 text-amber-600">
+                  <Layers3 className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Total stok
+                  </p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {totalStockText}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Total stok
-                </p>
-                <p className="text-lg font-semibold text-slate-900">
-                  {totalStockText}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2 text-xs font-semibold text-slate-600 sm:text-sm">
             <StatusTab
@@ -1001,7 +1097,43 @@ export function InventoryPage({
             </div>
           </div>
           <div className="flex gap-2 sm:col-span-1 min-w-0">
-            {isCategoryLocked ? (
+            {isRawDataSource ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-11 w-full max-w-xs justify-between border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
+                  >
+                    <span className="flex items-center gap-2 truncate">
+                      <Filter className="h-4 w-4" />
+                      {rawJenisFilter === "all"
+                        ? "Semua jenis"
+                        : rawJenisFilter}
+                    </span>
+                    <EllipsisVertical className="h-4 w-4 text-slate-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  <DropdownMenuLabel>Pilih jenis</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuCheckboxItem
+                    checked={rawJenisFilter === "all"}
+                    onCheckedChange={() => setRawJenisFilter("all")}
+                  >
+                    Semua jenis
+                  </DropdownMenuCheckboxItem>
+                  {rawJenisOptions.map((opt) => (
+                    <DropdownMenuCheckboxItem
+                      key={opt}
+                      checked={rawJenisFilter === opt}
+                      onCheckedChange={() => setRawJenisFilter(opt)}
+                    >
+                      {opt}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : isCategoryLocked ? (
               <Button
                 variant="outline"
                 className="h-11 w-full max-w-xs justify-between border-slate-200 bg-white text-slate-700 shadow-sm"
@@ -1077,6 +1209,7 @@ export function InventoryPage({
                 setRingColor("all");
                 setRingHoles("all");
                 setProductSubCategory("all");
+                setRawJenisFilter("all");
               }}
             >
               Reset
@@ -1501,6 +1634,34 @@ export function InventoryPage({
                   </datalist>
                 ) : null}
               </div>
+              {isRawDataSource ? (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Jenis
+                  </label>
+                  <Input
+                    value={form.subCategory}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        subCategory: e.target.value,
+                      }))
+                    }
+                    list={
+                      rawJenisOptions.length ? "raw-jenis-options" : undefined
+                    }
+                    placeholder="Jenis (opsional)"
+                    className="h-11"
+                  />
+                  {rawJenisOptions.length ? (
+                    <datalist id="raw-jenis-options">
+                      {rawJenisOptions.map((opt) => (
+                        <option key={opt} value={opt} />
+                      ))}
+                    </datalist>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
                   Satuan
@@ -1571,7 +1732,7 @@ function Row({
   onDelete,
   readOnly,
 }: {
-  item: InventoryItemWithKind;
+  item: InventoryListItem;
   displayCode: string;
   rowNumber: number;
   isRecentlyEdited: boolean;
@@ -1732,7 +1893,7 @@ function getStatus(
   return "aman";
 }
 
-function buildDisplayCode(item: InventoryItemWithKind) {
+function buildDisplayCode(item: InventoryListItem) {
   return item.code;
 }
 
@@ -1743,13 +1904,13 @@ function formatDateCell(value?: string): string {
   return date.toLocaleDateString("id-ID");
 }
 
-function getRingSize(item: InventoryItemWithKind): string | null {
+function getRingSize(item: InventoryListItem): string | null {
   const sizeMatch = item.name.match(/(\d{1,2}(?:[.,]\d+)?)\s*''/);
   if (!sizeMatch) return null;
   return sizeMatch[1].replace(",", ".");
 }
 
-function getRingColor(item: InventoryItemWithKind): string | null {
+function getRingColor(item: InventoryListItem): string | null {
   const label = item.name.toLowerCase();
   if (label.includes("chrome")) return "Chrome";
   if (
@@ -1762,7 +1923,7 @@ function getRingColor(item: InventoryItemWithKind): string | null {
   return null;
 }
 
-function getRingHoles(item: InventoryItemWithKind): string | null {
+function getRingHoles(item: InventoryListItem): string | null {
   const holeMatch = item.name.match(/lubang\s*(\d{1,2})/i);
   if (!holeMatch) return null;
   return holeMatch[1];

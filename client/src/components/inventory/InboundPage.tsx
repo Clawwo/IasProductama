@@ -94,23 +94,13 @@ function getCmSize(text: string): string | null {
   return match ? match[1] : null;
 }
 
-function getBodyKindLabel(kind?: string): string | null {
-  switch (kind) {
-    case "BODY-SNARE":
-      return "Snare";
-    case "BODY-TOM":
-      return "Tom";
-    case "BODY-BASS":
-      return "Bass";
-    case "BODY-GENERAL":
-      return "General";
-    default:
-      return null;
-  }
+function getRingHoles(text: string): string | null {
+  const match = /lubang\s*([0-9]+)/i.exec(text);
+  return match ? match[1] : null;
 }
 
 function getRawTypeValue(item: { kind?: string; subCategory?: string }) {
-  return String(item.kind ?? item.subCategory ?? "").trim();
+  return String(item.subCategory ?? item.kind ?? "").trim();
 }
 
 function sortNumericStrings(values: string[]) {
@@ -149,7 +139,7 @@ export function InboundPage({
 }: {
   fixedCategory?: string;
   canReadRawMaterials?: boolean;
-}) {
+}): React.ReactElement {
   const [vendor, setVendor] = useState("");
   const [today, setToday] = useState(() => getTodayIsoDate());
   const [date, setDate] = useState(() => getTodayIsoDate());
@@ -164,9 +154,7 @@ export function InboundPage({
   const [selectedCategory, setSelectedCategory] = useState<string>(
     () => fixedCategory ?? "all",
   );
-  const [ringSub, setRingSub] = useState<"all" | "SNARE" | "TOM">("all");
-  const [ringSize, setRingSize] = useState("all");
-  const [bodyKind, setBodyKind] = useState("all");
+  const [ringHole, setRingHole] = useState("all");
   const [bodySize, setBodySize] = useState("all");
   const [headSize, setHeadSize] = useState("all");
   const [lugSize, setLugSize] = useState("all");
@@ -367,34 +355,15 @@ export function InboundPage({
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }, [selectedItem]);
 
-  const ringSubOptions = useMemo(() => {
-    const set = new Set<string>();
-    mergedItems.forEach((it) => {
-      if (it.category === "Ring" && it.subCategory) set.add(it.subCategory);
-    });
-    return ["all", ...Array.from(set)] as Array<"all" | "SNARE" | "TOM">;
-  }, [mergedItems]);
-
-  const ringSizeOptions = useMemo(() => {
+  const ringHoleOptions = useMemo(() => {
     const set = new Set<string>();
     mergedItems.forEach((it) => {
       if (it.category === "Ring") {
-        const size = getInchSize(it.name);
-        if (size) set.add(size);
+        const hole = getRingHoles(it.name);
+        if (hole) set.add(hole);
       }
     });
-    return ["all", ...sortNumericStrings(Array.from(set))];
-  }, [mergedItems]);
-
-  const bodyKindOptions = useMemo(() => {
-    const set = new Set<string>();
-    mergedItems.forEach((it) => {
-      if (it.category === "Body") {
-        const label = getBodyKindLabel(it.kind);
-        if (label) set.add(label);
-      }
-    });
-    return ["all", ...Array.from(set)];
+    return ["all", ...Array.from(set).sort()];
   }, [mergedItems]);
 
   const bodySizeOptions = useMemo(() => {
@@ -474,9 +443,7 @@ export function InboundPage({
   }, [fixedCategory, selectedCategory]);
 
   useEffect(() => {
-    setRingSub("all");
-    setRingSize("all");
-    setBodyKind("all");
+    setRingHole("all");
     setBodySize("all");
     setHeadSize("all");
     setLugSize("all");
@@ -490,9 +457,7 @@ export function InboundPage({
   }, [
     searchTerm,
     selectedCategory,
-    ringSub,
-    ringSize,
-    bodyKind,
+    ringHole,
     bodySize,
     headSize,
     lugSize,
@@ -508,14 +473,11 @@ export function InboundPage({
         return false;
 
       if (selectedCategory === "Ring") {
-        if (ringSub !== "all" && it.subCategory !== ringSub) return false;
-        const size = getInchSize(it.name);
-        if (ringSize !== "all" && ringSize !== size) return false;
+        const holes = getRingHoles(it.name);
+        if (ringHole !== "all" && ringHole !== holes) return false;
       }
 
       if (selectedCategory === "Body") {
-        const kindLabel = getBodyKindLabel(it.kind);
-        if (bodyKind !== "all" && bodyKind !== kindLabel) return false;
         const size = getInchSize(it.name);
         if (bodySize !== "all" && bodySize !== size) return false;
       }
@@ -553,9 +515,7 @@ export function InboundPage({
     });
   }, [
     selectedCategory,
-    ringSub,
-    ringSize,
-    bodyKind,
+    ringHole,
     bodySize,
     headSize,
     lugSize,
@@ -570,31 +530,17 @@ export function InboundPage({
     if (selectedCategory === "Ring") {
       return [
         <FilterDropdown
-          key="ring-sub"
-          label="Model"
-          value={ringSub}
-          options={ringSubOptions}
-          onSelect={setRingSub}
-        />,
-        <FilterDropdown
-          key="ring-size"
-          label="Ukuran"
-          value={ringSize}
-          options={ringSizeOptions}
-          onSelect={setRingSize}
+          key="ring-hole"
+          label="Lubang"
+          value={ringHole}
+          options={ringHoleOptions}
+          onSelect={setRingHole}
         />,
       ];
     }
 
     if (selectedCategory === "Body") {
       return [
-        <FilterDropdown
-          key="body-kind"
-          label="Jenis"
-          value={bodyKind}
-          options={bodyKindOptions}
-          onSelect={setBodyKind}
-        />,
         <FilterDropdown
           key="body-size"
           label="Ukuran"
@@ -668,18 +614,14 @@ export function InboundPage({
     return [];
   }, [
     selectedCategory,
-    ringSub,
-    ringSize,
-    ringSubOptions,
-    ringSizeOptions,
-    bodyKind,
+    ringHole,
+    ringHoleOptions,
     bodySize,
     headSize,
     lugSize,
     pipeLength,
     packSize,
     rawType,
-    bodyKindOptions,
     bodySizeOptions,
     headSizeOptions,
     lugSizeOptions,
@@ -1094,13 +1036,19 @@ export function InboundPage({
 
             <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="justify-between">
-                  <span className="truncate text-left">
-                    {lineItem.name
-                      ? `${lineItem.code} — ${lineItem.name}`
-                      : "Pilih / cari barang"}
+                <Button
+                  variant="outline"
+                  className="justify-between w-full min-w-0"
+                >
+                  <span
+                    className="truncate text-left min-w-0 flex-1"
+                    title={
+                      lineItem.name || lineItem.code || "Pilih / cari barang"
+                    }
+                  >
+                    {lineItem.name || lineItem.code || "Pilih / cari barang"}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {lineItem.name ? (
                       <span
                         className={cn(
@@ -1166,6 +1114,9 @@ export function InboundPage({
                       className={
                         highlightIndex === idx ? "bg-slate-100" : undefined
                       }
+                      onPointerMove={(event) => event.preventDefault()}
+                      onPointerLeave={(event) => event.preventDefault()}
+                      onMouseEnter={() => setHighlightIndex(idx)}
                       onSelect={() => {
                         setLineItem((l) => ({
                           ...l,
@@ -1192,10 +1143,10 @@ export function InboundPage({
                           </span>
                         </div>
                         <span
-                          className="text-xs text-slate-600 truncate max-w-70"
-                          title={it.name}
+                          className="text-xs text-slate-600 whitespace-normal wrap-break-word"
+                          title={it.name ?? it.code}
                         >
-                          {it.name}
+                          {it.name ?? it.code}
                         </span>
                       </div>
                     </DropdownMenuItem>
