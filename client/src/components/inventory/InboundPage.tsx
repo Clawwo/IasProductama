@@ -139,7 +139,7 @@ export function InboundPage({
 }: {
   fixedCategory?: string;
   canReadRawMaterials?: boolean;
-}): JSX.Element {
+}): React.ReactElement {
   const [vendor, setVendor] = useState("");
   const [today, setToday] = useState(() => getTodayIsoDate());
   const [date, setDate] = useState(() => getTodayIsoDate());

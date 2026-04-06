@@ -123,7 +123,7 @@ export function OutboundPage({
   canReadRawMaterials = false,
 }: {
   canReadRawMaterials?: boolean;
-}): JSX.Element {
+}): React.ReactElement {
   const [orderer, setOrderer] = useState("");
   const [today, setToday] = useState(() => getTodayIsoDate());
   const [date, setDate] = useState(() => getTodayIsoDate());
