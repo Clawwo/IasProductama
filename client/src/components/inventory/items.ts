@@ -26,6 +26,7 @@ export type InventoryItem = {
   name: string;
   stock: number;
   unit?: string;
+  unitWeightOns?: number;
   category: string;
   subCategory?: "SNARE" | "TOM" | "DRUMBAND" | "HTS" | "SEMI";
   kind?: InventoryKind;

@@ -88,6 +88,7 @@ type RemoteItem = {
   kind?: string;
   stock: number;
   unit?: string;
+  unitWeightOns?: number;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -181,6 +182,7 @@ export function InventoryPage({
     subCategory: "",
     unit: "PCS" as ItemUnit,
     stock: "0",
+    unitWeightOns: "",
   });
   const [manualCode, setManualCode] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -246,6 +248,7 @@ export function InventoryPage({
                   ? it.stock
                   : 0,
               unit: it.unit,
+              unitWeightOns: it.unitWeightOns,
               kind: rawKind || undefined,
               createdAt: it.createdAt,
               updatedAt: it.updatedAt,
@@ -303,6 +306,7 @@ export function InventoryPage({
           subCategory:
             normalizeSubCategory(it?.subCategory) ?? base?.subCategory,
           stock: it?.stock ?? base?.stock ?? 0,
+          unitWeightOns: it?.unitWeightOns ?? base?.unitWeightOns,
         } as InventoryListItem;
         return {
           ...merged,
@@ -675,6 +679,7 @@ export function InventoryPage({
       subCategory: "",
       unit: "PCS",
       stock: "0",
+      unitWeightOns: "",
     });
     setManualCode(false);
     setFormError(null);
@@ -692,6 +697,11 @@ export function InventoryPage({
       subCategory: item.subCategory ?? "",
       unit,
       stock: baseQtyToInputString(item.stock, unit),
+      unitWeightOns:
+        typeof item.unitWeightOns === "number" &&
+        Number.isFinite(item.unitWeightOns)
+          ? String(item.unitWeightOns)
+          : "",
     });
     setManualCode(true);
     setFormError(null);
@@ -716,6 +726,17 @@ export function InventoryPage({
       return;
     }
 
+    const weightInput = form.unitWeightOns.trim();
+    let unitWeightOns: number | undefined;
+    if (!isRawDataSource && weightInput) {
+      const parsedWeight = Number(weightInput.replace(",", "."));
+      if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
+        setFormError("Berat satuan harus berupa angka ons (>= 0).");
+        return;
+      }
+      unitWeightOns = parsedWeight;
+    }
+
     const subCategoryValue = form.subCategory.trim();
     const inferredKind = inferKind({
       code: codeValue,
@@ -735,6 +756,7 @@ export function InventoryPage({
       category: categoryValue,
       unit,
       stock: parsedStock.baseQty,
+      unitWeightOns,
       kind: inferredKind,
     };
     const createPayload = isRawDataSource
@@ -807,6 +829,8 @@ export function InventoryPage({
             typeof savedItem.stock === "number"
               ? savedItem.stock
               : parsedStock.baseQty,
+          unitWeightOns:
+            savedItem.unitWeightOns ?? existing?.unitWeightOns ?? unitWeightOns,
           kind: isRawDataSource
             ? (savedItem.kind ?? existing?.kind)
             : (savedItem.kind ?? existing?.kind ?? inferredKind),
@@ -882,6 +906,7 @@ export function InventoryPage({
 
   const exportInventory = () => {
     if (filtered.length === 0) return;
+    const includeWeight = !isRawDataSource;
     const header = [
       "Kode barang",
       "Nama barang",
@@ -889,7 +914,8 @@ export function InventoryPage({
       "Stok",
       "Satuan",
       "Status",
-      "Status",
+      "Stok base",
+      ...(includeWeight ? ["Berat (ons)"] : []),
       "Update terakhir",
     ];
     const rows = filtered.map((item) => [
@@ -900,7 +926,7 @@ export function InventoryPage({
       unitLabel(normalizeItemUnit(item.unit)),
       getStatus(item.stock, item.unit),
       item.stock,
-      getStatus(item.stock),
+      ...(includeWeight ? [item.unitWeightOns ?? ""] : []),
       formatDateCell(item.updatedAt ?? item.createdAt),
     ]);
     const data = [header, ...rows];
@@ -938,7 +964,8 @@ export function InventoryPage({
     setShowForm(false);
   }
 
-  const columnCount = readOnly ? 5 : 6;
+  const hasWeightColumn = !isRawDataSource;
+  const columnCount = (readOnly ? 5 : 6) + (hasWeightColumn ? 1 : 0);
 
   return (
     <div className="min-h-screen bg-white px-4 py-6 text-slate-900 md:px-6 md:py-8">
@@ -1427,6 +1454,7 @@ export function InventoryPage({
                   <TableHead>Nama Barang</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Stok</TableHead>
+                  {hasWeightColumn && <TableHead>Berat (ons)</TableHead>}
                   {!readOnly && <TableHead>Aksi</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -1457,6 +1485,7 @@ export function InventoryPage({
                           setPendingDelete(item);
                         }}
                         readOnly={readOnly}
+                        showWeight={hasWeightColumn}
                       />
                     );
                   })
@@ -1681,6 +1710,26 @@ export function InventoryPage({
                   <option value="METER">m</option>
                 </select>
               </div>
+              {!isRawDataSource ? (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700">
+                    Berat Satuan (ons)
+                  </label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Contoh: 2.5"
+                    value={form.unitWeightOns}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        unitWeightOns: e.target.value,
+                      }))
+                    }
+                    className="h-11"
+                  />
+                </div>
+              ) : null}
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700">
                   Stok
@@ -1731,6 +1780,7 @@ function Row({
   onEdit,
   onDelete,
   readOnly,
+  showWeight,
 }: {
   item: InventoryListItem;
   displayCode: string;
@@ -1739,6 +1789,7 @@ function Row({
   onEdit: () => void;
   onDelete: () => void;
   readOnly?: boolean;
+  showWeight?: boolean;
 }) {
   const status = getStatus(item.stock, item.unit);
   return (
@@ -1749,7 +1800,7 @@ function Row({
     >
       <TableCell className="text-slate-500">{rowNumber}</TableCell>
       <TableCell className="font-semibold text-slate-800">
-        {displayCode}
+        <span title={item.code}>{displayCode}</span>
       </TableCell>
       <TableCell className="text-slate-700">
         <div className="flex flex-col gap-1">
@@ -1770,6 +1821,11 @@ function Row({
       <TableCell className="font-semibold text-slate-900">
         {formatBaseQtyWithUnit(item.stock, normalizeItemUnit(item.unit))}
       </TableCell>
+      {showWeight ? (
+        <TableCell className="text-slate-700">
+          {formatUnitWeightOns(item.unitWeightOns)}
+        </TableCell>
+      ) : null}
       {!readOnly && (
         <TableCell>
           <ActionsMenu onEdit={onEdit} onDelete={onDelete} />
@@ -1894,7 +1950,10 @@ function getStatus(
 }
 
 function buildDisplayCode(item: InventoryListItem) {
-  return item.code;
+  const code = item.code ?? "";
+  const maxLength = 10;
+  if (code.length <= maxLength) return code;
+  return `${code.slice(0, maxLength)}...`;
 }
 
 function formatDateCell(value?: string): string {
@@ -1902,6 +1961,14 @@ function formatDateCell(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("id-ID");
+}
+
+function formatUnitWeightOns(value?: number): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  const fixed = Number.isInteger(value) ? String(value) : value.toFixed(2);
+  return `${fixed.replace(/\.00$/, "")} ons`;
 }
 
 function getRingSize(item: InventoryListItem): string | null {

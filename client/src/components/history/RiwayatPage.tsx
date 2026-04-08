@@ -139,6 +139,15 @@ function formatDateTime(value: string) {
   });
 }
 
+function formatWeightOns(value: number) {
+  if (!Number.isFinite(value)) return "0 ons";
+  const rounded = Math.round(value * 100) / 100;
+  const text = Number.isInteger(rounded)
+    ? String(rounded)
+    : String(rounded.toFixed(2)).replace(/\.00$/, "");
+  return `${text} ons`;
+}
+
 const resolveActor = (user?: UserRef | null) => {
   const name = user?.name?.trim();
   const email = user?.email?.trim();
@@ -147,10 +156,20 @@ const resolveActor = (user?: UserRef | null) => {
 
 export function RiwayatPage() {
   const [items, setItems] = useState<
-    Array<{ code: string; name?: string; unit?: string }>
+    Array<{
+      code: string;
+      name?: string;
+      unit?: string;
+      unitWeightOns?: number;
+    }>
   >([]);
   const [rawItems, setRawItems] = useState<
-    Array<{ code: string; name?: string; unit?: string }>
+    Array<{
+      code: string;
+      name?: string;
+      unit?: string;
+      unitWeightOns?: number;
+    }>
   >([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [stats, setStats] = useState<HistoryStats>({
@@ -204,12 +223,22 @@ export function RiwayatPage() {
     const loadItems = async () => {
       try {
         const [data, rawData] = await Promise.all([
-          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
-            ITEMS_URL,
-          ),
-          httpJson<Array<{ code: string; name?: string; unit?: string }>>(
-            RAW_ITEMS_URL,
-          ),
+          httpJson<
+            Array<{
+              code: string;
+              name?: string;
+              unit?: string;
+              unitWeightOns?: number;
+            }>
+          >(ITEMS_URL),
+          httpJson<
+            Array<{
+              code: string;
+              name?: string;
+              unit?: string;
+              unitWeightOns?: number;
+            }>
+          >(RAW_ITEMS_URL),
         ]);
         if (!cancelled) {
           setItems(data);
@@ -231,6 +260,19 @@ export function RiwayatPage() {
     [...items, ...rawItems].forEach((it) =>
       map.set(it.code, normalizeItemUnit(it.unit)),
     );
+    return map;
+  }, [items, rawItems]);
+
+  const weightByCode = useMemo(() => {
+    const map = new Map<string, number>();
+    [...items, ...rawItems].forEach((it) => {
+      if (
+        typeof it.unitWeightOns === "number" &&
+        Number.isFinite(it.unitWeightOns)
+      ) {
+        map.set(it.code, it.unitWeightOns);
+      }
+    });
     return map;
   }, [items, rawItems]);
 
@@ -480,6 +522,27 @@ export function RiwayatPage() {
     });
     setDetailOpen(true);
   };
+
+  const detailWeight = useMemo(() => {
+    if (!detailData) return null;
+    let totalWeightOns = 0;
+    let countedLines = 0;
+    detailData.lines.forEach((line) => {
+      const unitWeight = weightByCode.get(line.code);
+      if (unitWeight !== undefined) {
+        totalWeightOns += unitWeight * Math.abs(line.qty);
+        countedLines += 1;
+      }
+    });
+    const totalText = countedLines ? formatWeightOns(totalWeightOns) : "-";
+    const sub =
+      countedLines === 0
+        ? "Belum ada berat satuan"
+        : countedLines === detailData.lines.length
+          ? "Semua baris"
+          : "Ada baris tanpa berat";
+    return { totalText, sub };
+  }, [detailData, weightByCode]);
 
   const exportExcel = async () => {
     const rowsToExport = await fetchAllMovementsForExport();
@@ -959,6 +1022,15 @@ export function RiwayatPage() {
               <div className="rounded-lg border p-3 text-sm">
                 <p className="text-muted-foreground">Catatan</p>
                 <p className="font-medium">{detailData.note ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="text-muted-foreground">Total berat</p>
+                <p className="font-medium">{detailWeight?.totalText ?? "-"}</p>
+                {detailWeight?.sub ? (
+                  <p className="text-xs text-muted-foreground">
+                    {detailWeight.sub}
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-lg border">
                 <div className="border-b px-4 py-3 font-semibold">

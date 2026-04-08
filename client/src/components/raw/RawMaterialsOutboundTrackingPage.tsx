@@ -165,6 +165,23 @@ export function RawMaterialsOutboundTrackingPage() {
     });
   };
 
+  const resetForm = () => {
+    const nextDate = getTodayIsoDate();
+    setArtisan("");
+    setToday(nextDate);
+    setDate(nextDate);
+    setNote("");
+    resetLineForm();
+    setLines([]);
+    setSearchTerm("");
+    setRawType("all");
+    setDraftId(null);
+    setDraftStatus("Belum disimpan");
+    setFormError(null);
+    setDropdownOpen(false);
+    setHighlightIndex(0);
+  };
+
   const showNotice = (type: ToastVariant, message: string) => {
     setNotice({ type, message });
     setTimeout(() => setNotice(null), 3200);
@@ -421,6 +438,7 @@ export function RawMaterialsOutboundTrackingPage() {
       if (data?.id) setDraftId(data.id);
       setDraftStatus("Draft tersimpan");
       showNotice("default", "Draft bahan baku keluar disimpan.");
+      resetForm();
     } catch (err: unknown) {
       showNotice("destructive", toUserMessage(err, "Gagal menyimpan draft."));
     } finally {
@@ -478,10 +496,17 @@ export function RawMaterialsOutboundTrackingPage() {
         body: JSON.stringify(payload),
       });
       showNotice("default", "Bahan baku keluar berhasil disimpan.");
-      setLines([]);
-      setNote("");
-      setArtisan("");
-      resetLineForm();
+      if (draftId) {
+        try {
+          await httpJson(`${DRAFTS_URL}/${draftId}`, { method: "DELETE" });
+        } catch (err: unknown) {
+          showNotice(
+            "destructive",
+            toUserMessage(err, "Gagal menghapus draft."),
+          );
+        }
+      }
+      resetForm();
       await loadOutbounds();
       await loadRawItems();
     } catch (err: unknown) {

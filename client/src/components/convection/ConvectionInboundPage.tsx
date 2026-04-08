@@ -221,6 +221,31 @@ export function ConvectionInboundPage() {
     }, 4200);
   }
 
+  const resetForm = (options?: { keepSubmit?: boolean }) => {
+    const nextDate = getTodayIsoDate();
+    setVendor("");
+    setToday(nextDate);
+    setDate(nextDate);
+    setNote("");
+    setLineItem({ code: "", name: "", qty: "1", unit: "", note: "" });
+    setSearchTerm("");
+    setSelectedCategory("all");
+    setSelectedSubCategory("all");
+    setLines([]);
+    setFormError("");
+    setDraftId(null);
+    setDraftStatus("Belum disimpan");
+    setDropdownOpen(false);
+    setHighlightIndex(0);
+    setSelectedItem(null);
+    setConfirmRemoveId(null);
+    setConfirmSubmitOpen(false);
+    if (!options?.keepSubmit) {
+      setSubmitStatus("idle");
+      setSubmitMessage("");
+    }
+  };
+
   // Load all items on mount
   useEffect(() => {
     fetchItems().catch((err) => {
@@ -467,14 +492,16 @@ export function ConvectionInboundPage() {
         .then(setAllItems)
         .catch(() => {});
 
-      // Reset form
-      setTimeout(() => {
-        setVendor("");
-        setDate(new Date().toISOString().slice(0, 10));
-        setNote("");
-        setLines([]);
-        setDraftId(null);
-        setDraftStatus("Belum disimpan");
+      if (draftId) {
+        try {
+          await httpJson(`${DRAFTS_URL}/${draftId}`, { method: "DELETE" });
+        } catch (err: unknown) {
+          const message = toUserMessage(err, "Gagal menghapus draft");
+          pushToast("destructive", "Gagal hapus draft", message);
+        }
+      }
+      resetForm({ keepSubmit: true });
+      window.setTimeout(() => {
         setSubmitStatus("idle");
         setSubmitMessage("");
       }, 2000);
@@ -523,6 +550,7 @@ export function ConvectionInboundPage() {
         isUpdate ? "Draft diperbarui" : "Draft tersimpan",
         `Data draft ${lines.length} barang telah disimpan.`,
       );
+      resetForm();
     } catch (err: unknown) {
       const message = toUserMessage(err, "Gagal menyimpan draft");
       setFormError(message);

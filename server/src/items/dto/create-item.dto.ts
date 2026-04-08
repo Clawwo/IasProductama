@@ -54,5 +54,11 @@ export class CreateItemDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  unitWeightOns?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   stock?: number;
 }
