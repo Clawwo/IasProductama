@@ -107,6 +107,15 @@ function sortNumericStrings(values: string[]) {
   return values.sort((a, b) => parseFloat(a) - parseFloat(b));
 }
 
+function formatWeightOns(value: number) {
+  if (!Number.isFinite(value)) return "0 ons";
+  const rounded = Math.round(value * 100) / 100;
+  const text = Number.isInteger(rounded)
+    ? String(rounded)
+    : String(rounded.toFixed(2)).replace(/\.00$/, "");
+  return `${text} ons`;
+}
+
 type LineItem = {
   id: string;
   code: string;
@@ -123,6 +132,7 @@ type RemoteItem = {
   kind?: string;
   unit?: string;
   stock: number;
+  unitWeightOns?: number;
 };
 
 type ToastVariant = "default" | "destructive";
@@ -195,6 +205,36 @@ export function InboundPage({
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4200);
   }
+
+  const resetForm = (options?: { keepSubmit?: boolean }) => {
+    const nextDate = getTodayIsoDate();
+    setVendor("");
+    setToday(nextDate);
+    setDate(nextDate);
+    setNote("");
+    setLineItem({ code: "", name: "", qty: "1", note: "" });
+    setSearchTerm("");
+    setSelectedCategory(fixedCategory ?? "all");
+    setRingHole("all");
+    setBodySize("all");
+    setHeadSize("all");
+    setLugSize("all");
+    setPipeLength("all");
+    setPackSize("all");
+    setRawType("all");
+    setLines([]);
+    setFormError("");
+    setDraftId(null);
+    setDraftStatus("Belum disimpan");
+    setDropdownOpen(false);
+    setHighlightIndex(0);
+    setConfirmRemoveId(null);
+    setConfirmSubmitOpen(false);
+    if (!options?.keepSubmit) {
+      setSubmitStatus("idle");
+      setSubmitMessage("");
+    }
+  };
 
   const fetchItems = useCallback(async () => {
     try {
@@ -299,6 +339,7 @@ export function InboundPage({
         ...it,
         ...api,
         stock: api?.stock ?? it.stock ?? 0,
+        unitWeightOns: api?.unitWeightOns,
       };
     });
 
@@ -312,6 +353,7 @@ export function InboundPage({
         kind: it.kind ?? it.subCategory,
         unit: it.unit,
         stock: it.stock ?? 0,
+        unitWeightOns: it.unitWeightOns,
       }));
 
     return [...baseMerged, ...extras];
@@ -325,6 +367,19 @@ export function InboundPage({
   const unitByCode = useMemo(() => {
     const map = new Map<string, ItemUnit>();
     mergedItems.forEach((it) => map.set(it.code, normalizeItemUnit(it.unit)));
+    return map;
+  }, [mergedItems]);
+
+  const weightByCode = useMemo(() => {
+    const map = new Map<string, number>();
+    mergedItems.forEach((it) => {
+      if (
+        typeof it.unitWeightOns === "number" &&
+        Number.isFinite(it.unitWeightOns)
+      ) {
+        map.set(it.code, it.unitWeightOns);
+      }
+    });
     return map;
   }, [mergedItems]);
 
@@ -424,17 +479,33 @@ export function InboundPage({
   const totals = useMemo(() => {
     const totalItem = lines.length;
     const byUnit: Record<ItemUnit, number> = { PCS: 0, GRAM: 0, METER: 0 };
+    let totalWeightOns = 0;
+    let weightLineCount = 0;
     for (const line of lines) {
       const unit = unitByCode.get(line.code) ?? "PCS";
       byUnit[unit] += line.qty;
+      const unitWeight = weightByCode.get(line.code);
+      if (unitWeight !== undefined) {
+        totalWeightOns += unitWeight * line.qty;
+        weightLineCount += 1;
+      }
     }
     const parts = (Object.entries(byUnit) as Array<[ItemUnit, number]>)
       .filter(([, qty]) => qty > 0)
       .map(([unit, qty]) => formatBaseQtyWithUnit(qty, unit));
 
     const totalQtyText = parts.length ? parts.join(" • ") : "0";
-    return { totalItem, totalQtyText };
-  }, [lines, unitByCode]);
+    const totalWeightText = weightLineCount
+      ? formatWeightOns(totalWeightOns)
+      : "-";
+    const totalWeightSub =
+      weightLineCount === 0
+        ? "Belum ada berat satuan"
+        : weightLineCount === totalItem
+          ? "Semua baris"
+          : "Ada baris tanpa berat";
+    return { totalItem, totalQtyText, totalWeightText, totalWeightSub };
+  }, [lines, unitByCode, weightByCode]);
 
   useEffect(() => {
     if (fixedCategory && selectedCategory !== fixedCategory) {
@@ -751,6 +822,7 @@ export function InboundPage({
         "Draft tersimpan",
         "Draft barang masuk berhasil disimpan.",
       );
+      resetForm();
     } catch (err: unknown) {
       const message = toUserMessage(err, "Gagal menyimpan draft.");
       pushToast("destructive", "Gagal simpan draft", message);
@@ -841,6 +913,15 @@ export function InboundPage({
           : "Data penerimaan berhasil dicatat.",
       );
       fetchItems();
+      if (draftId) {
+        try {
+          await httpJson(`${DRAFTS_URL}/${draftId}`, { method: "DELETE" });
+        } catch (err: unknown) {
+          const message = toUserMessage(err, "Gagal menghapus draft.");
+          pushToast("destructive", "Gagal hapus draft", message);
+        }
+      }
+      resetForm({ keepSubmit: true });
     } catch (err: unknown) {
       const message = toUserMessage(err, "Gagal menyimpan.");
       setSubmitStatus("error");
@@ -920,7 +1001,7 @@ export function InboundPage({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <SummaryCard
               label="Status Draft"
               value={draftStatus}
@@ -935,6 +1016,11 @@ export function InboundPage({
               label="Total qty"
               value={totals.totalQtyText}
               sub="Semua baris"
+            />
+            <SummaryCard
+              label="Total berat"
+              value={totals.totalWeightText}
+              sub={totals.totalWeightSub}
             />
             <SummaryCard
               label="Tanggal"
