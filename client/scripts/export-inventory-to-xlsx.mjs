@@ -82,16 +82,20 @@ function deriveKind(item) {
 }
 
 function exportToWorkbook(items) {
-  const rows = items.map(({ code, name, category, stock }) => {
-    const kind = deriveKind({ name, category });
-    return {
-      Code: code,
-      Kind: kind,
-      Name: name,
-      Category: category,
-      Stock: stock,
-    };
-  });
+  const rows = items.map(
+    ({ code, name, category, stock, unit, unitWeightOns }) => {
+      const kind = deriveKind({ name, category });
+      return {
+        Code: code,
+        Kind: kind,
+        Name: name,
+        Category: category,
+        Unit: unit ?? "",
+        "Berat (ons)": unitWeightOns ?? "",
+        Stock: stock,
+      };
+    },
+  );
 
   const workbook = xlsx.utils.book_new();
   const worksheet = xlsx.utils.json_to_sheet(rows);

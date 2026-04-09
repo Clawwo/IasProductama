@@ -392,7 +392,10 @@ export function RiwayatPage() {
 
   const buildHistoryRows = (
     rows: Movement[],
+    options?: { includeWeight?: boolean },
   ): Array<Array<string | number>> => {
+    const includeWeight = options?.includeWeight ?? false;
+
     const header: string[] = [
       "Kode Transaksi",
       "Tanggal",
@@ -400,6 +403,7 @@ export function RiwayatPage() {
       "Nama Barang",
       "Jumlah",
       "Satuan",
+      ...(includeWeight ? ["Berat satuan (ons)", "Total berat (ons)"] : []),
       "Akun",
       "Tipe",
       "Batch",
@@ -410,6 +414,15 @@ export function RiwayatPage() {
       const unit = unitByCode.get(row.itemCode) ?? "PCS";
       const absBaseQty = Math.abs(row.qty);
       const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
+
+      const unitWeightOns = includeWeight
+        ? weightByCode.get(row.itemCode)
+        : undefined;
+      const totalWeightOns =
+        includeWeight && unitWeightOns !== undefined
+          ? Math.round(unitWeightOns * displayQty * 100) / 100
+          : "";
+
       return [
         row.txCode,
         toDateOnly(row.rawTime),
@@ -417,6 +430,7 @@ export function RiwayatPage() {
         row.name,
         displayQty,
         unitLabel(unit),
+        ...(includeWeight ? [unitWeightOns ?? "", totalWeightOns] : []),
         row.actor ?? "",
         row.kind,
         row.batchCode ?? "",
@@ -530,7 +544,10 @@ export function RiwayatPage() {
     detailData.lines.forEach((line) => {
       const unitWeight = weightByCode.get(line.code);
       if (unitWeight !== undefined) {
-        totalWeightOns += unitWeight * Math.abs(line.qty);
+        const unit = unitByCode.get(line.code) ?? "PCS";
+        const absBaseQty = Math.abs(line.qty);
+        const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
+        totalWeightOns += unitWeight * displayQty;
         countedLines += 1;
       }
     });
@@ -559,14 +576,14 @@ export function RiwayatPage() {
       );
 
       if (inboundRows.length > 0) {
-        const data = buildHistoryRows(inboundRows);
+        const data = buildHistoryRows(inboundRows, { includeWeight: true });
         const sheet = XLSX.utils.aoa_to_sheet(data);
         applySheetStyles(sheet, data);
         XLSX.utils.book_append_sheet(workbook, sheet, "Masuk");
       }
 
       if (outboundRows.length > 0) {
-        const data = buildHistoryRows(outboundRows);
+        const data = buildHistoryRows(outboundRows, { includeWeight: true });
         const sheet = XLSX.utils.aoa_to_sheet(data);
         applySheetStyles(sheet, data);
         XLSX.utils.book_append_sheet(workbook, sheet, "Keluar");
@@ -576,7 +593,7 @@ export function RiwayatPage() {
       return;
     }
 
-    const data = buildHistoryRows(rowsToExport);
+    const data = buildHistoryRows(rowsToExport, { includeWeight: true });
     const sheet = XLSX.utils.aoa_to_sheet(data);
     applySheetStyles(sheet, data);
     XLSX.utils.book_append_sheet(workbook, sheet, typeFilter);
@@ -776,6 +793,9 @@ export function RiwayatPage() {
                   Qty
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800">
+                  Total berat
+                </TableHead>
+                <TableHead className="font-semibold text-slate-800">
                   Akun
                 </TableHead>
                 <TableHead className="font-semibold text-slate-800 text-center">
@@ -787,7 +807,7 @@ export function RiwayatPage() {
               {loading ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Memuat riwayat...
@@ -796,7 +816,7 @@ export function RiwayatPage() {
               ) : error ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="py-6 text-center text-sm text-red-600"
                   >
                     {error}
@@ -805,7 +825,7 @@ export function RiwayatPage() {
               ) : pageRows.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="py-6 text-center text-sm text-muted-foreground"
                   >
                     Tidak ada data. Ubah filter atau catat transaksi baru.
@@ -814,6 +834,14 @@ export function RiwayatPage() {
               ) : (
                 pageRows.map((row, idx) => {
                   const isIn = row.direction === "Masuk";
+                  const unit = unitByCode.get(row.itemCode) ?? "PCS";
+                  const absBaseQty = Math.abs(row.qty);
+                  const displayQty = baseQtyToDisplayNumber(absBaseQty, unit);
+                  const unitWeightOns = weightByCode.get(row.itemCode);
+                  const rowTotalWeightText =
+                    unitWeightOns === undefined
+                      ? "-"
+                      : formatWeightOns(unitWeightOns * displayQty);
                   return (
                     <TableRow key={row.id} className="odd:bg-slate-50">
                       <TableCell className="text-muted-foreground">
@@ -861,6 +889,9 @@ export function RiwayatPage() {
                       </TableCell>
                       <TableCell className="font-semibold">
                         {isIn ? `+${row.qty}` : `-${row.qty}`}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {rowTotalWeightText}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {row.actor ?? "-"}
