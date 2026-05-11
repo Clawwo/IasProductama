@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateConvectionItemDto } from './dto/create-convection-item.dto.js';
@@ -310,6 +311,16 @@ export class ConvectionService {
     });
     if (!exists) throw new NotFoundException('Convection item not found');
 
+    const [inboundUsage, outboundUsage] = await Promise.all([
+      this.prisma.convectionInboundLine.count({ where: { code } }),
+      this.prisma.convectionOutboundLine.count({ where: { code } }),
+    ]);
+    if (inboundUsage > 0 || outboundUsage > 0) {
+      throw new BadRequestException(
+        `Barang ${code} tidak bisa dihapus karena sudah dipakai di transaksi.`,
+      );
+    }
+
     await this.prisma.convectionItem.delete({ where: { code } });
     return { success: true };
   }
@@ -374,28 +385,33 @@ export class ConvectionService {
         return { line, item, qtyInBase } as const;
       });
 
-      const inbound = await tx.convectionInbound.create({
+      const inboundId = randomUUID();
+      await tx.convectionInbound.create({
         data: {
+          id: inboundId,
           code,
           vendor: dto.vendor,
           date,
           note: dto.note,
           createdById: userId ?? undefined,
-          lines: {
-            create: linesWithQty.map(({ line, qtyInBase }) => ({
-              code: line.code,
-              name: line.name,
-              category: line.category,
-              subCategory: line.subCategory,
-              unit: line.unit?.trim() || itemMap.get(line.code)?.unit || 'KG',
-              qty: line.qty,
-              qtyInBase,
-              note: line.note,
-            })),
-          },
         },
-        include: { lines: true },
       });
+
+      if (linesWithQty.length > 0) {
+        await tx.convectionInboundLine.createMany({
+          data: linesWithQty.map(({ line, qtyInBase }) => ({
+            inboundId,
+            code: line.code,
+            name: line.name,
+            category: line.category,
+            subCategory: line.subCategory,
+            unit: line.unit?.trim() || itemMap.get(line.code)?.unit || 'KG',
+            qty: line.qty,
+            qtyInBase,
+            note: line.note,
+          })),
+        });
+      }
 
       for (const { line, item, qtyInBase } of linesWithQty) {
         await tx.convectionItem.update({
@@ -408,6 +424,15 @@ export class ConvectionService {
             unit: line.unit?.trim() || item.unit || undefined,
           },
         });
+      }
+
+      const inbound = await tx.convectionInbound.findUnique({
+        where: { id: inboundId },
+        include: { lines: true },
+      });
+
+      if (!inbound) {
+        throw new NotFoundException('Convection inbound not found');
       }
 
       return inbound;
@@ -453,28 +478,33 @@ export class ConvectionService {
         return { line, item, qtyInBase } as const;
       });
 
-      const outbound = await tx.convectionOutbound.create({
+      const outboundId = randomUUID();
+      await tx.convectionOutbound.create({
         data: {
+          id: outboundId,
           code,
           receiver: dto.receiver,
           date,
           note: dto.note,
           createdById: userId ?? undefined,
-          lines: {
-            create: linesWithQty.map(({ line, qtyInBase }) => ({
-              code: line.code,
-              name: line.name,
-              category: line.category,
-              subCategory: line.subCategory,
-              unit: line.unit?.trim() || itemMap.get(line.code)?.unit || 'KG',
-              qty: line.qty,
-              qtyInBase,
-              note: line.note,
-            })),
-          },
         },
-        include: { lines: true },
       });
+
+      if (linesWithQty.length > 0) {
+        await tx.convectionOutboundLine.createMany({
+          data: linesWithQty.map(({ line, qtyInBase }) => ({
+            outboundId,
+            code: line.code,
+            name: line.name,
+            category: line.category,
+            subCategory: line.subCategory,
+            unit: line.unit?.trim() || itemMap.get(line.code)?.unit || 'KG',
+            qty: line.qty,
+            qtyInBase,
+            note: line.note,
+          })),
+        });
+      }
 
       for (const { line, item, qtyInBase } of linesWithQty) {
         await tx.convectionItem.update({
@@ -487,6 +517,15 @@ export class ConvectionService {
             unit: line.unit?.trim() || item.unit || undefined,
           },
         });
+      }
+
+      const outbound = await tx.convectionOutbound.findUnique({
+        where: { id: outboundId },
+        include: { lines: true },
+      });
+
+      if (!outbound) {
+        throw new NotFoundException('Convection outbound not found');
       }
 
       return outbound;

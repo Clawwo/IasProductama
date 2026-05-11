@@ -853,9 +853,9 @@ export function RiwayatPage() {
                       <TableCell className="font-mono text-xs text-slate-700">
                         {row.txCode}
                       </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{row.name}</div>
-                        <div className="text-xs text-muted-foreground">
+                      <TableCell className="max-w-[200px] sm:max-w-[300px] lg:max-w-[400px]">
+                        <div className="font-medium truncate" title={row.name}>{row.name}</div>
+                        <div className="text-xs text-muted-foreground truncate" title={row.itemCode}>
                           {row.itemCode}
                         </div>
                       </TableCell>

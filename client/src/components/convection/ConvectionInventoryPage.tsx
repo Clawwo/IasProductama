@@ -83,8 +83,6 @@ type ConvectionForm = {
   stockBase: number;
 };
 
-const UNIT_OPTIONS = ["ONS", "KG", "PCS", "SET"] as const;
-
 type ToastVariant = "default" | "destructive";
 type Toast = {
   id: string;
@@ -103,6 +101,12 @@ function normalizeUnitLabel(value: string | null | undefined): string {
     return "PCS";
   if (cleaned === "OZ" || cleaned === "ONZ") return "ONS";
   return cleaned;
+}
+
+function normalizeUnitInput(value: string | null | undefined): string {
+  const cleaned = (value ?? "").trim();
+  if (!cleaned) return "";
+  return normalizeUnitLabel(cleaned);
 }
 
 function toUnitDisplayLabel(value: string | null | undefined): string {
@@ -306,6 +310,17 @@ export function ConvectionInventoryPage({
     return Array.from(set).sort();
   }, [items]);
 
+  const unitOptions = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((item) => {
+      const rawUnit = (item.unit ?? "").trim();
+      if (!rawUnit) return;
+      const normalized = normalizeUnitLabel(rawUnit);
+      if (normalized) set.add(normalized);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
   const subCategoryOptions = useMemo(() => {
     const selectedCategory = canonicalizeConvectionCategory(form.category)
       .trim()
@@ -388,8 +403,8 @@ export function ConvectionInventoryPage({
   const hideMetersColumn =
     selectedCategories.length > 0 &&
     selectedCategories.every((cat) => isSepatuLabel(cat));
-  const unitAutoLocked = !editing;
-  const normalizedFormUnit = normalizeUnitLabel(form.unit);
+  const unitAutoLocked = false;
+  const normalizedFormUnit = normalizeUnitInput(form.unit);
   const meterPerKgLocked =
     normalizedFormUnit === "PCS" || (!editing && normalizedFormUnit === "KG");
   const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
@@ -648,12 +663,11 @@ export function ConvectionInventoryPage({
 
   const suggestUnitByCategory = useCallback(
     (category: string) => {
-      const allowedUnits = new Set<string>(UNIT_OPTIONS);
       const normalizedCategory = canonicalizeConvectionCategory(category)
         .trim()
         .toLowerCase();
 
-      if (!normalizedCategory) return "KG";
+      if (!normalizedCategory) return unitOptions[0] ?? "KG";
       if (normalizedCategory === "sepatu") return "PCS";
 
       const unitCounts = new Map<string, number>();
@@ -668,8 +682,10 @@ export function ConvectionInventoryPage({
 
         if (itemCategory !== normalizedCategory) return;
 
-        const unit = normalizeUnitLabel(item.unit);
-        if (!allowedUnits.has(unit)) return;
+        const rawUnit = (item.unit ?? "").trim();
+        if (!rawUnit) return;
+        const unit = normalizeUnitLabel(rawUnit);
+        if (!unit) return;
         unitCounts.set(unit, (unitCounts.get(unit) ?? 0) + 1);
       });
 
@@ -680,9 +696,9 @@ export function ConvectionInventoryPage({
         })[0][0];
       }
 
-      return "KG";
+      return unitOptions[0] ?? "KG";
     },
-    [items],
+    [items, unitOptions],
   );
 
   function openAddForm() {
@@ -734,15 +750,10 @@ export function ConvectionInventoryPage({
       setFormError("Konversi meter/kg tidak boleh negatif.");
       return;
     }
-    if (
-      !UNIT_OPTIONS.includes(
-        normalizeUnitLabel(form.unit) as (typeof UNIT_OPTIONS)[number],
-      )
-    ) {
-      setFormError("Satuan harus ONS, KG, PCS, atau SET.");
+    if (!form.unit.trim()) {
+      setFormError("Satuan wajib diisi.");
       return;
     }
-
     const normalizedCode = normalizeCodeInput(form.code);
     const normalizedName = normalizeNameInput(form.name, normalizedCode);
 
@@ -1548,7 +1559,7 @@ export function ConvectionInventoryPage({
                   <Input
                     value={form.unit}
                     onChange={(e) => {
-                      const nextUnit = normalizeUnitLabel(e.target.value);
+                      const nextUnit = normalizeUnitInput(e.target.value);
                       setForm((f) => ({
                         ...f,
                         unit: nextUnit,
@@ -1563,15 +1574,19 @@ export function ConvectionInventoryPage({
                     disabled={unitAutoLocked}
                   />
                   <datalist id="convection-unit-options">
-                    {UNIT_OPTIONS.map((unit) => (
+                    {unitOptions.map((unit) => (
                       <option key={unit} value={unit} />
                     ))}
                   </datalist>
-                  {unitAutoLocked ? (
+                  {unitOptions.length > 0 ? (
                     <p className="text-[11px] text-slate-500">
-                      Satuan otomatis saat tambah barang baru.
+                      Pilihan satuan mengikuti daftar barang konveksi.
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Satuan bisa diketik bebas.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700">
