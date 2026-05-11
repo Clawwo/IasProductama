@@ -83,7 +83,6 @@ type ConvectionForm = {
   stockBase: number;
 };
 
-
 type ToastVariant = "default" | "destructive";
 type Toast = {
   id: string;
