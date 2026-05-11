@@ -1,14 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import {
-  IsIn,
-  IsNotEmpty,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Min,
-} from 'class-validator';
-
-const ALLOWED_CONVECTION_UNITS = ['ONS', 'KG', 'PCS', 'SET'] as const;
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 function normalizeUnitInput(value: unknown) {
   const cleaned = String(value ?? '')
@@ -44,8 +35,7 @@ export class CreateConvectionItemDto {
   @IsOptional()
   @Transform(({ value }) => normalizeUnitInput(value))
   @IsString()
-  @IsIn(ALLOWED_CONVECTION_UNITS)
-  unit?: (typeof ALLOWED_CONVECTION_UNITS)[number];
+  unit?: string;
 
   @IsOptional()
   @Type(() => Number)

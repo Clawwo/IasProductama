@@ -788,6 +788,7 @@ export function InboundPage({
 
   async function handleSaveDraft() {
     const payload = {
+      draftKind: fixedCategory === "Bahan Baku" ? "INBOUND_RAW" : "INBOUND_GOODS",
       vendor: vendor.trim(),
       date,
       note: note.trim() || undefined,
